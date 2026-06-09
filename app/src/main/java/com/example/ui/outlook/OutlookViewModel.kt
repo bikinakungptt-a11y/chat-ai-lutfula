@@ -11,20 +11,33 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
+import com.microsoft.identity.client.IAccount
+import com.example.data.MicrosoftAuthService
+
 data class OutlookUiState(
     val emails: List<GraphEmail> = emptyList(),
     val isLoading: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val microsoftAccount: IAccount? = null
 )
 
 class OutlookViewModel(
-    private val graphRepository: MicrosoftGraphRepository
+    private val graphRepository: MicrosoftGraphRepository,
+    private val microsoftAuthService: MicrosoftAuthService
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(OutlookUiState())
     val uiState: StateFlow<OutlookUiState> = _uiState.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            microsoftAuthService.account.collectLatest { account ->
+                _uiState.value = _uiState.value.copy(microsoftAccount = account)
+                if (account != null && _uiState.value.emails.isEmpty()) {
+                    loadEmails()
+                }
+            }
+        }
         viewModelScope.launch {
             graphRepository.isLoading.collectLatest { loading ->
                 _uiState.value = _uiState.value.copy(isLoading = loading)
@@ -40,7 +53,6 @@ class OutlookViewModel(
                 _uiState.value = _uiState.value.copy(emails = emails)
             }
         }
-        loadEmails()
     }
 
     fun loadEmails() {
@@ -59,13 +71,20 @@ class OutlookViewModel(
         }
     }
 
+    fun signInMicrosoft(activity: android.app.Activity) {
+        viewModelScope.launch {
+            microsoftAuthService.acquireTokenInteractive(activity)
+        }
+    }
+
     class Factory(
-        private val graphRepository: MicrosoftGraphRepository
+        private val graphRepository: MicrosoftGraphRepository,
+        private val microsoftAuthService: MicrosoftAuthService
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             if (modelClass.isAssignableFrom(OutlookViewModel::class.java)) {
-                return OutlookViewModel(graphRepository) as T
+                return OutlookViewModel(graphRepository, microsoftAuthService) as T
             }
             throw IllegalArgumentException("Unknown ViewModel class")
         }

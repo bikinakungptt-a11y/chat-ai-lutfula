@@ -106,7 +106,8 @@ fun AppNavigation() {
             composable(Screen.Outlook.route) {
                 val outlookViewModel: com.example.ui.outlook.OutlookViewModel = viewModel(
                     factory = com.example.ui.outlook.OutlookViewModel.Factory(
-                        AppContainer.getMicrosoftGraphRepository(context)
+                        AppContainer.getMicrosoftGraphRepository(context),
+                        AppContainer.getMicrosoftAuthService(context)
                     )
                 )
                 com.example.ui.outlook.OutlookScreen(

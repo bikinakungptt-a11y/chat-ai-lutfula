@@ -98,7 +98,35 @@ fun OutlookScreen(
                 )
             )
 
-            if (uiState.isLoading) {
+            if (uiState.microsoftAccount == null) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Filled.Email, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(64.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Connect Microsoft Account",
+                            color = Color.White,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Login to read and search your Outlook emails.",
+                            color = Color.Gray,
+                            fontSize = 14.sp
+                        )
+                        Spacer(modifier = Modifier.height(24.dp))
+                        val activity = androidx.compose.ui.platform.LocalContext.current as android.app.Activity
+                        Button(
+                            onClick = { viewModel.signInMicrosoft(activity) },
+                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
+                            shape = RoundedCornerShape(24.dp)
+                        ) {
+                            Text("Login Microsoft", color = Color.White)
+                        }
+                    }
+                }
+            } else if (uiState.isLoading) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = PrimaryBlue)
                 }

@@ -153,6 +153,7 @@ class MicrosoftAuthService(private val context: Context) {
 
                     override fun onError(exception: MsalException) {
                         Log.e("MSAL", "Silent Auth failed", exception)
+                        _account.value = null
                         continuation.resume(null)
                     }
                 }
