@@ -20,6 +20,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
+import com.example.data.ChatSessionEntity
 import com.example.data.ChatRepository
 import com.example.data.MessageEntity
 import kotlinx.coroutines.flow.map
@@ -38,6 +39,8 @@ data class UiMessage(
 
 data class ChatUiState(
     val messages: List<UiMessage> = emptyList(),
+    val sessions: List<ChatSessionEntity> = emptyList(),
+    val currentSessionId: Long? = null,
     val isLoading: Boolean = false,
     val error: String? = null,
     val mode: ChatMode = ChatMode.NORMAL,
@@ -55,14 +58,36 @@ class ChatViewModel(
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
+    private var messageJob: kotlinx.coroutines.Job? = null
+
     init {
         viewModelScope.launch {
-            chatRepository.allMessages.collect { messages ->
-                _uiState.update { state ->
-                    state.copy(messages = messages.map { UiMessage(it.id.toString(), it.role, it.content) })
+            chatRepository.allSessions.collect { sessions ->
+                _uiState.update { it.copy(sessions = sessions) }
+                if (sessions.isNotEmpty() && _uiState.value.currentSessionId == null) {
+                    selectSession(sessions.first().id)
                 }
             }
         }
+    }
+
+    fun selectSession(sessionId: Long) {
+        _uiState.update { it.copy(currentSessionId = sessionId, messages = emptyList()) }
+        messageJob?.cancel()
+        messageJob = viewModelScope.launch {
+            chatRepository.getMessagesForSession(sessionId).collect { messages ->
+                _uiState.update { state ->
+                    if (state.currentSessionId == sessionId) {
+                         state.copy(messages = messages.map { UiMessage(it.id.toString(), it.role, it.content) })
+                    } else state
+                }
+            }
+        }
+    }
+    
+    fun createNewSession() {
+        _uiState.update { it.copy(currentSessionId = null, messages = emptyList()) }
+        messageJob?.cancel()
     }
 
     fun setMode(mode: ChatMode) {
@@ -90,8 +115,11 @@ class ChatViewModel(
 
     fun clearChat() {
         viewModelScope.launch(Dispatchers.IO) {
-            chatRepository.clearHistory()
-            _uiState.update { it.copy(error = null) }
+            val sessionId = _uiState.value.currentSessionId
+            if (sessionId != null) {
+                chatRepository.deleteSession(sessionId)
+            }
+            _uiState.update { it.copy(error = null, currentSessionId = null, messages = emptyList()) }
         }
     }
 
@@ -108,7 +136,15 @@ class ChatViewModel(
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                chatRepository.insertMessage(MessageEntity(role = "user", content = messageText))
+                var sessionId = _uiState.value.currentSessionId
+                if (sessionId == null) {
+                    val title = if (messageText.length > 20) messageText.substring(0, 20) + "..." else messageText
+                    sessionId = chatRepository.createNewSession(title)
+                    _uiState.update { it.copy(currentSessionId = sessionId) }
+                    selectSession(sessionId) // to start observing messages for the new session
+                }
+                
+                chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "user", content = messageText))
                 
                 val apiKey = settingsRepository.apiKey.first()
                 val baseUrl = settingsRepository.baseUrl.first()
@@ -129,7 +165,7 @@ class ChatViewModel(
                 var searchLinks = ""
                 
                 if (firecrawlKey.isBlank()) {
-                    chatRepository.insertMessage(MessageEntity(role = "assistant", content = "⚠️ Real-time search API key is missing. Answering without live search."))
+                    chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "⚠️ Real-time search API key is missing. Answering without live search."))
                 } else {
                     try {
                         val searchAdapter = moshi.adapter(com.example.network.FirecrawlSearchRequest::class.java)
@@ -159,10 +195,10 @@ class ChatViewModel(
                                 searchLinks = "\n\nSources:\n" + topResults.joinToString("\n") { "• ${it.title ?: "Link"}\n  ${it.url}" }
                             }
                         } else {
-                            chatRepository.insertMessage(MessageEntity(role = "assistant", content = "⚠️ Real-time search failed, answering without live search."))
+                            chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "⚠️ Real-time search failed, answering without live search."))
                         }
                     } catch (e: Exception) {
-                        chatRepository.insertMessage(MessageEntity(role = "assistant", content = "⚠️ Real-time search failed, answering without live search."))
+                        chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "⚠️ Real-time search failed, answering without live search."))
                     }
                 }
 
@@ -236,7 +272,7 @@ class ChatViewModel(
                             assistantReply
                         }
                         
-                        chatRepository.insertMessage(MessageEntity(role = "assistant", content = finalReply))
+                        chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = finalReply))
                         
                         _uiState.update {
                             it.copy(isLoading = false)

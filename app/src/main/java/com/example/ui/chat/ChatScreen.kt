@@ -19,6 +19,8 @@ import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -47,12 +49,53 @@ fun ChatScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
+    var showHistoryDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.messages.size, uiState.isLoading) {
         val totalItems = uiState.messages.size + if (uiState.isLoading) 1 else 0
         if (totalItems > 0) {
             listState.animateScrollToItem(totalItems - 1)
         }
+    }
+
+    if (showHistoryDialog) {
+        AlertDialog(
+            onDismissRequest = { showHistoryDialog = false },
+            title = { Text("Chat History", color = Color.White) },
+            text = {
+                LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
+                    items(uiState.sessions) { session ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.selectSession(session.id)
+                                    showHistoryDialog = false
+                                }
+                                .padding(vertical = 12.dp, horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Filled.ChatBubbleOutline, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(session.title, color = Color.White, modifier = Modifier.weight(1f))
+                        }
+                    }
+                    if (uiState.sessions.isEmpty()) {
+                        item {
+                            Text("No history yet.", color = Color.Gray, modifier = Modifier.padding(16.dp))
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showHistoryDialog = false }) {
+                    Text("Close")
+                }
+            },
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            titleContentColor = Color.White,
+            textContentColor = Color.White
+        )
     }
 
     Scaffold(
@@ -100,8 +143,14 @@ fun ChatScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { viewModel.clearChat() }) {
+                    IconButton(onClick = { showHistoryDialog = true }) {
                         Icon(imageVector = Icons.Filled.History, contentDescription = "History", tint = Color.White)
+                    }
+                    IconButton(onClick = { viewModel.createNewSession() }) {
+                        Icon(imageVector = Icons.Filled.Add, contentDescription = "New Chat", tint = Color.White)
+                    }
+                    IconButton(onClick = { viewModel.clearChat() }) {
+                        Icon(imageVector = Icons.Filled.Delete, contentDescription = "Delete Current Chat", tint = Color.White)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
