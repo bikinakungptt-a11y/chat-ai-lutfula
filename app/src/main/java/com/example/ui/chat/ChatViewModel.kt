@@ -176,9 +176,9 @@ class ChatViewModel(
                 // Prepare system prompt based on mode
                 val mode = _uiState.value.mode
                 var systemPrompt = when (mode) {
-                    ChatMode.NORMAL -> "You are a helpful AI assistant. Provide short and direct answers without unnecessary verbosity."
-                    ChatMode.THINK -> "You are a helpful AI assistant. Provide more detailed reasoning-style answers. Explain your thought process."
-                    ChatMode.THINK_DEEPLY -> "You are a helpful AI assistant. Provide exhaustive, deeper, step-by-step structured answers. Analyze all aspects thoroughly."
+                    ChatMode.NORMAL -> "You are a helpful AI assistant. Provide fast, simple, and direct answers."
+                    ChatMode.THINK -> "You are a helpful AI assistant. Approach tasks with careful reasoning and thorough checking. Explain your thought process."
+                    ChatMode.THINK_DEEPLY -> "You are a helpful AI assistant. Provide deeper analysis, detailed debugging, and exhaustive step-by-step reasoning. You are better for coding and complex tasks."
                 }
                 
                 if (searchContext.isNotEmpty()) {
