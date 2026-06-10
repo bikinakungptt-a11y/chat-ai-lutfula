@@ -54,7 +54,9 @@ fun AppNavigation() {
     val settingsViewModel: SettingsViewModel = viewModel(
         factory = SettingsViewModel.Factory(
             settingsRepository,
-            AppContainer.getMicrosoftAuthService(context)
+            AppContainer.getMicrosoftAuthService(context),
+            AppContainer.okHttpClient,
+            AppContainer.moshi
         )
     )
 

@@ -6,20 +6,36 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.data.SettingsRepository
 import com.example.data.MicrosoftAuthService
+import com.example.network.ChatRequest
+import com.example.network.ChatMessage
+import com.squareup.moshi.Moshi
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import com.microsoft.identity.client.IAccount
 
 data class SettingsUiState(
+    val textProvider: String = "",
     val baseUrl: String = "",
     val apiKey: String = "",
+    val textPath: String = "/chat/completions",
     val modelName: String = "",
     val firecrawlApiKey: String = "",
     val isSaved: Boolean = false,
+    val isTesting: Boolean = false,
+    val testResult: String? = null,
+    val testError: String? = null,
+    val requireValidation: Boolean = false,
+    val validationError: String? = null,
     val microsoftAccount: IAccount? = null,
     
     // Create Photo
@@ -59,7 +75,9 @@ data class SettingsUiState(
 
 class SettingsViewModel(
     private val settingsRepository: SettingsRepository,
-    private val microsoftAuthService: MicrosoftAuthService
+    private val microsoftAuthService: MicrosoftAuthService,
+    private val okHttpClient: OkHttpClient,
+    private val moshi: Moshi
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -76,15 +94,19 @@ class SettingsViewModel(
 
     private fun loadSettings() {
         viewModelScope.launch {
+            val provider = settingsRepository.textProvider.first()
             val url = settingsRepository.baseUrl.first()
             val key = settingsRepository.apiKey.first()
+            val path = settingsRepository.textPath.first()
             val model = settingsRepository.model.first()
             val firecrawlKey = settingsRepository.firecrawlApiKey.first()
             
             _uiState.update {
                 it.copy(
+                    textProvider = provider.takeIf { p -> p.isNotEmpty() } ?: "OpenAI",
                     baseUrl = url,
                     apiKey = key,
+                    textPath = path.takeIf { p -> p.isNotEmpty() } ?: "/chat/completions",
                     modelName = model,
                     firecrawlApiKey = firecrawlKey,
                     
@@ -119,32 +141,105 @@ class SettingsViewModel(
     }
 
     // Chat Settings Updaters
-    fun updateBaseUrl(url: String) { _uiState.update { it.copy(baseUrl = url, isSaved = false) } }
-    fun updateApiKey(key: String) { _uiState.update { it.copy(apiKey = key, isSaved = false) } }
-    fun updateModelName(model: String) { _uiState.update { it.copy(modelName = model, isSaved = false) } }
+    fun updateTextProvider(provider: String) { _uiState.update { it.copy(textProvider = provider, isSaved = false) } }
+    fun updateBaseUrl(url: String) { _uiState.update { it.copy(baseUrl = url, isSaved = false, validationError = null) } }
+    fun updateApiKey(key: String) { _uiState.update { it.copy(apiKey = key, isSaved = false, validationError = null) } }
+    fun updateTextPath(path: String) { _uiState.update { it.copy(textPath = path, isSaved = false, validationError = null) } }
+    fun updateModelName(model: String) { _uiState.update { it.copy(modelName = model, isSaved = false, validationError = null) } }
     fun updateFirecrawlApiKey(key: String) { _uiState.update { it.copy(firecrawlApiKey = key, isSaved = false) } }
 
+    fun clearTestResult() {
+        _uiState.update { it.copy(testResult = null, testError = null, validationError = null) }
+    }
+
     fun applyPreset(presetName: String) {
-        val (url, model) = when (presetName) {
-            "OpenAI" -> "https://api.openai.com/v1" to "gpt-4o"
-            "OpenRouter" -> "https://openrouter.ai/api/v1" to "openai/o1-mini"
-            "xAI" -> "https://api.x.ai/v1" to "grok-2-latest"
-            else -> "" to ""
+        val (url, model, path) = when (presetName) {
+            "OpenAI" -> Triple("https://api.openai.com/v1", "gpt-4o", "/chat/completions")
+            "OpenRouter" -> Triple("https://openrouter.ai/api/v1", "openai/o1-mini", "/chat/completions")
+            "xAI" -> Triple("https://api.x.ai/v1", "grok-2-latest", "/chat/completions")
+            else -> Triple("", "", "")
         }
         _uiState.update { 
             it.copy(
                 baseUrl = url.takeIf { url.isNotEmpty() } ?: it.baseUrl,
                 modelName = model.takeIf { model.isNotEmpty() } ?: it.modelName,
-                isSaved = false
+                textPath = path.takeIf { path.isNotEmpty() } ?: it.textPath,
+                isSaved = false,
+                validationError = null
             )
         }
     }
 
+    private fun validateTextSettings(): Boolean {
+        val state = _uiState.value
+        return when {
+            state.baseUrl.isBlank() -> { _uiState.update { it.copy(validationError = "Base URL is required") }; false }
+            state.apiKey.isBlank() -> { _uiState.update { it.copy(validationError = "API key is required") }; false }
+            state.textPath.isBlank() -> { _uiState.update { it.copy(validationError = "API path is required") }; false }
+            state.modelName.isBlank() -> { _uiState.update { it.copy(validationError = "Model is required") }; false }
+            else -> true
+        }
+    }
+
     fun save() {
+        if (!validateTextSettings()) return
         viewModelScope.launch {
             val state = _uiState.value
-            settingsRepository.saveSettings(state.apiKey, state.baseUrl, state.modelName, state.firecrawlApiKey)
-            _uiState.update { it.copy(isSaved = true) }
+            settingsRepository.saveSettings(state.textProvider, state.apiKey, state.baseUrl, state.textPath, state.modelName, state.firecrawlApiKey)
+            _uiState.update { it.copy(isSaved = true, validationError = null, testResult = null, testError = null) }
+        }
+    }
+
+    fun testConnection() {
+        if (!validateTextSettings()) return
+        
+        _uiState.update { it.copy(isTesting = true, testResult = null, testError = null) }
+        
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val state = _uiState.value
+                val baseUrl = state.baseUrl.trimEnd('/')
+                val path = if (state.textPath.startsWith("/")) state.textPath else "/${state.textPath}"
+                val endpoint = "$baseUrl$path"
+                
+                val requestBody = ChatRequest(
+                    model = state.modelName,
+                    messages = listOf(ChatMessage(role = "user", content = "Hello"))
+                )
+
+                val requestAdapter = moshi.adapter(ChatRequest::class.java)
+                val jsonRequestBody = requestAdapter.toJson(requestBody)
+                val body = jsonRequestBody.toRequestBody("application/json; charset=utf-8".toMediaType())
+
+                val request = Request.Builder()
+                    .url(endpoint)
+                    .addHeader("Authorization", "Bearer ${state.apiKey}")
+                    .addHeader("Content-Type", "application/json")
+                    .post(body)
+                    .build()
+
+                val response = okHttpClient.newCall(request).execute()
+                val responseBodyStr = response.body?.string()
+
+                withContext(Dispatchers.Main) {
+                    if (response.isSuccessful) {
+                        _uiState.update { it.copy(isTesting = false, testResult = "Connection successful") }
+                    } else {
+                        val errorMsg = when (response.code) {
+                            401 -> "401 Unauthorized - Check your API key."
+                            402 -> "402 Payment Required - No credit or check billing."
+                            404 -> "404 Not Found - Wrong Base URL or path."
+                            429 -> "429 Rate Limit Exceeded - Sending too many requests."
+                            else -> "HTTP ${response.code}: $responseBodyStr"
+                        }
+                        _uiState.update { it.copy(isTesting = false, testError = errorMsg) }
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    _uiState.update { it.copy(isTesting = false, testError = "Network Error or CORS/proxy: ${e.message}") }
+                }
+            }
         }
     }
 
@@ -229,12 +324,14 @@ class SettingsViewModel(
 
     class Factory(
         private val settingsRepository: SettingsRepository,
-        private val microsoftAuthService: MicrosoftAuthService
+        private val microsoftAuthService: MicrosoftAuthService,
+        private val okHttpClient: OkHttpClient,
+        private val moshi: Moshi
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             if (modelClass.isAssignableFrom(SettingsViewModel::class.java)) {
-                return SettingsViewModel(settingsRepository, microsoftAuthService) as T
+                return SettingsViewModel(settingsRepository, microsoftAuthService, okHttpClient, moshi) as T
             }
             throw IllegalArgumentException("Unknown ViewModel class")
         }

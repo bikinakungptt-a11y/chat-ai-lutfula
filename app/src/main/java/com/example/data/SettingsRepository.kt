@@ -14,8 +14,10 @@ val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "se
 class SettingsRepository(private val context: Context) {
     private val API_KEY = stringPreferencesKey("api_key")
     private val BASE_URL = stringPreferencesKey("base_url")
+    private val TEXT_PATH = stringPreferencesKey("text_path")
     private val MODEL = stringPreferencesKey("model")
     private val FIRECRAWL_API_KEY = stringPreferencesKey("firecrawl_api_key")
+    private val TEXT_PROVIDER = stringPreferencesKey("text_provider")
 
     // Media Generation Settings
     // Create Photo
@@ -47,8 +49,10 @@ class SettingsRepository(private val context: Context) {
     private val PHOTO_VIDEO_IMAGE_FORMAT = stringPreferencesKey("photo_video_image_format")
     private val PHOTO_VIDEO_DURATION = stringPreferencesKey("photo_video_duration")
 
+    val textProvider: Flow<String> = context.dataStore.data.map { it[TEXT_PROVIDER] ?: "" }
     val apiKey: Flow<String> = context.dataStore.data.map { it[API_KEY] ?: "" }
     val baseUrl: Flow<String> = context.dataStore.data.map { it[BASE_URL] ?: "" }
+    val textPath: Flow<String> = context.dataStore.data.map { it[TEXT_PATH] ?: "/chat/completions" }
     val model: Flow<String> = context.dataStore.data.map { it[MODEL] ?: "" }
     val firecrawlApiKey: Flow<String> = context.dataStore.data.map { it[FIRECRAWL_API_KEY] ?: "" }
 
@@ -78,10 +82,12 @@ class SettingsRepository(private val context: Context) {
     val photoVideoImageFormat: Flow<String> = context.dataStore.data.map { it[PHOTO_VIDEO_IMAGE_FORMAT] ?: "base64" }
     val photoVideoDuration: Flow<String> = context.dataStore.data.map { it[PHOTO_VIDEO_DURATION] ?: "5" }
 
-    suspend fun saveSettings(key: String, url: String, modelName: String, firecrawlKey: String) {
+    suspend fun saveSettings(provider: String, key: String, url: String, path: String, modelName: String, firecrawlKey: String) {
         context.dataStore.edit { prefs ->
+            prefs[TEXT_PROVIDER] = provider
             prefs[API_KEY] = key
             prefs[BASE_URL] = url
+            prefs[TEXT_PATH] = path
             prefs[MODEL] = modelName
             prefs[FIRECRAWL_API_KEY] = firecrawlKey
         }

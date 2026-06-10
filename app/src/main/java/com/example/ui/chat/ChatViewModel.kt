@@ -166,6 +166,7 @@ class ChatViewModel(
                 
                 val apiKey = settingsRepository.apiKey.first()
                 val baseUrl = settingsRepository.baseUrl.first()
+                val path = settingsRepository.textPath.first()
                 val modelName = settingsRepository.model.first()
                 val firecrawlKey = settingsRepository.firecrawlApiKey.first()
 
@@ -225,11 +226,9 @@ class ChatViewModel(
                 }
 
                 // Construct full endpoint URL
-                val endpoint = if (baseUrl.endsWith("/")) {
-                    "${baseUrl}chat/completions"
-                } else {
-                    "${baseUrl}/chat/completions"
-                }
+                val baseUrlCleaned = baseUrl.trimEnd('/')
+                val pathCleaned = if (path.startsWith("/")) path else "/$path"
+                val endpoint = "$baseUrlCleaned$pathCleaned"
 
                 // Prepare system prompt based on mode
                 val mode = _uiState.value.mode

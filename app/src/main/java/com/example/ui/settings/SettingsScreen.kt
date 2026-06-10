@@ -59,7 +59,6 @@ fun SettingsScreen(
         ProviderData("xAI", "api.x.ai", Icons.Filled.Language),
         ProviderData("Custom", "Your own endpoint", Icons.Filled.Code)
     )
-    var selectedProvider by remember { mutableStateOf(presets[0]) }
 
     Scaffold(
         topBar = {
@@ -106,14 +105,14 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(12.dp))
                 
                 presets.forEach { provider ->
-                    val isSelected = selectedProvider.name == provider.name
+                    val isSelected = uiState.textProvider == provider.name
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(bottom = 12.dp)
                             .clip(RoundedCornerShape(16.dp))
                             .clickable {
-                                selectedProvider = provider
+                                viewModel.updateTextProvider(provider.name)
                                 viewModel.applyPreset(provider.name)
                             }
                             .border(
@@ -218,6 +217,25 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             OutlinedTextField(
+                value = uiState.textPath,
+                onValueChange = { viewModel.updateTextPath(it) },
+                label = { Text("API Path (e.g. /chat/completions)") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = PrimaryNeon,
+                    unfocusedBorderColor = OutlineDark,
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                ),
+                shape = RoundedCornerShape(16.dp)
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            OutlinedTextField(
                 value = uiState.apiKey,
                 onValueChange = { viewModel.updateApiKey(it) },
                 label = { Text("API Key") },
@@ -284,6 +302,15 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(24.dp))
             
             // Buttons
+            if (uiState.validationError != null) {
+                Text(
+                    text = uiState.validationError ?: "",
+                    color = Color.Red,
+                    fontSize = 14.sp,
+                    modifier = Modifier.padding(bottom = 8.dp).align(Alignment.Start)
+                )
+            }
+
             Button(
                 onClick = { viewModel.save() },
                 modifier = Modifier
@@ -299,15 +326,72 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(16.dp))
             
             OutlinedButton(
-                onClick = { /* Test connection simulation */ },
+                onClick = { viewModel.testConnection() },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
                 border = androidx.compose.foundation.BorderStroke(1.dp, OutlineDark),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryBlue),
-                shape = RoundedCornerShape(28.dp)
+                shape = RoundedCornerShape(28.dp),
+                enabled = !uiState.isTesting
             ) {
-                Text("Test Connection", fontSize = 16.sp)
+                if (uiState.isTesting) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = PrimaryBlue, strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text("Testing...", fontSize = 16.sp, color = PrimaryBlue)
+                } else {
+                    Text("Test Connection", fontSize = 16.sp)
+                }
+            }
+
+            if (uiState.testError != null) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.Red.copy(alpha = 0.1f), RoundedCornerShape(16.dp))
+                        .border(1.dp, Color.Red.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Connection Failed", color = Color.Red, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text(uiState.testError ?: "", color = Color.Red.copy(alpha = 0.8f), fontSize = 12.sp)
+                    }
+                }
+
+                LaunchedEffect(uiState.testError) {
+                    if (uiState.testError != null) {
+                        kotlinx.coroutines.delay(5000)
+                        viewModel.clearTestResult()
+                    }
+                }
+            }
+
+            if (uiState.testResult != null) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(SuccessGreen.copy(alpha = 0.1f), RoundedCornerShape(16.dp))
+                        .border(1.dp, SuccessGreen.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(imageVector = Icons.Filled.CheckCircle, contentDescription = null, tint = SuccessGreen)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Connected", color = SuccessGreen, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text(uiState.testResult ?: "", color = SuccessGreen.copy(alpha = 0.8f), fontSize = 12.sp)
+                    }
+                }
+
+                LaunchedEffect(uiState.testResult) {
+                    if (uiState.testResult != null) {
+                        kotlinx.coroutines.delay(5000)
+                        viewModel.clearTestResult()
+                    }
+                }
             }
 
             if (uiState.isSaved) {
@@ -323,8 +407,7 @@ fun SettingsScreen(
                     Icon(imageVector = Icons.Filled.CheckCircle, contentDescription = null, tint = SuccessGreen)
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Connected", color = SuccessGreen, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Text("Connection successful", color = SuccessGreen.copy(alpha = 0.8f), fontSize = 12.sp)
+                        Text("Saved successfully", color = SuccessGreen, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
                     Icon(imageVector = Icons.Filled.Check, contentDescription = null, tint = SuccessGreen)
                 }
