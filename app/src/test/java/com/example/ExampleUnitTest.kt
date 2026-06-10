@@ -2,15 +2,17 @@ package com.example
 
 import org.junit.Assert.*
 import org.junit.Test
+import com.example.network.ChatRequest
+import com.example.network.ChatMessage
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 
-/**
- * Example local unit test, which will execute on the development machine (host).
- *
- * See [testing documentation](http://d.android.com/tools/testing).
- */
 class ExampleUnitTest {
   @Test
-  fun addition_isCorrect() {
-    assertEquals(4, 2 + 2)
+  fun moshiTest() {
+    val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+    val request = ChatRequest(model = "gpt-4", messages = listOf(), reasoning = null)
+    val json = moshi.adapter(ChatRequest::class.java).toJson(request)
+    println("JSON OUTPUT: $json")
   }
 }

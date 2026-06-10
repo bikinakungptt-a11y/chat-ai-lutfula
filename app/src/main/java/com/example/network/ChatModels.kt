@@ -4,10 +4,16 @@ import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 
 @JsonClass(generateAdapter = true)
+data class ReasoningConfig(
+    val effort: String
+)
+
+@JsonClass(generateAdapter = true)
 data class ChatRequest(
     val model: String,
     val messages: List<ChatMessage>,
-    val stream: Boolean = false
+    val stream: Boolean = false,
+    val reasoning: ReasoningConfig? = null
 )
 
 @JsonClass(generateAdapter = true)

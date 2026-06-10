@@ -7,6 +7,7 @@ import com.example.data.SettingsRepository
 import com.example.network.ChatMessage
 import com.example.network.ChatRequest
 import com.example.network.ChatResponse
+import com.example.network.ReasoningConfig
 import com.squareup.moshi.Moshi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -260,9 +261,20 @@ class ChatViewModel(
                     ChatMessage(role = it.role, content = it.content) 
                 })
 
+                val enableReasoningParameter = true // Settings flag
+
+                val reasoning = if (enableReasoningParameter) {
+                    when (mode) {
+                        ChatMode.THINK -> ReasoningConfig("medium")
+                        ChatMode.THINK_DEEPLY -> ReasoningConfig("high")
+                        ChatMode.NORMAL -> null
+                    }
+                } else null
+
                 val requestBody = ChatRequest(
                     model = modelName,
-                    messages = chatMessages
+                    messages = chatMessages,
+                    reasoning = reasoning
                 )
 
                 val requestAdapter = moshi.adapter(ChatRequest::class.java)
