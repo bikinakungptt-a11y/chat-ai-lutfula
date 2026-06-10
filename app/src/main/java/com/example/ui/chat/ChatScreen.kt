@@ -35,8 +35,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -534,13 +539,95 @@ fun MessageBubble(message: UiMessage) {
                 )
             }
             if (message.content.isNotBlank()) {
-                Text(
-                    text = message.content,
-                    color = Color.White,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp
-                )
+                MessageContent(content = message.content, isUser = isUser)
+            }
+        }
+    }
+}
+
+@Composable
+fun MessageContent(content: String, isUser: Boolean) {
+    if (isUser || !content.contains("```")) {
+        Text(
+            text = content,
+            color = Color.White,
+            style = MaterialTheme.typography.bodyMedium,
+            fontSize = 14.sp,
+            lineHeight = 20.sp
+        )
+        return
+    }
+
+    val blocks = content.split("```")
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
+
+    Column {
+        blocks.forEachIndexed { index, block ->
+            if (index % 2 == 0) {
+                if (block.isNotBlank()) {
+                    Text(
+                        text = block.trim('\n'),
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp
+                    )
+                }
+            } else {
+                val lines = block.lines()
+                val maybeLanguage = lines.firstOrNull()?.trim() ?: ""
+                val hasLanguage = maybeLanguage.isNotBlank() && !maybeLanguage.contains(" ")
+                val languageId = if (hasLanguage) maybeLanguage else "Code"
+                val codeContent = if (hasLanguage) lines.drop(1).joinToString("\n") else block
+                val trimmedContent = codeContent.trim()
+
+                if (trimmedContent.isNotBlank()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                            .background(Color(0xFF1E1E1E), RoundedCornerShape(8.dp))
+                    ) {
+                        Column(modifier = Modifier.padding(8.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = languageId,
+                                    color = Color.Gray,
+                                    fontSize = 12.sp,
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                                IconButton(
+                                    onClick = {
+                                        clipboardManager.setText(AnnotatedString(trimmedContent))
+                                        android.widget.Toast.makeText(context, "Copied", android.widget.Toast.LENGTH_SHORT).show()
+                                    },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.ContentCopy,
+                                        contentDescription = "Copy code",
+                                        tint = Color.Gray,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                            HorizontalDivider(color = Color.DarkGray, modifier = Modifier.padding(vertical = 4.dp))
+                            Text(
+                                text = trimmedContent,
+                                color = Color.LightGray,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 12.sp,
+                                lineHeight = 16.sp
+                            )
+                        }
+                    }
+                }
             }
         }
     }

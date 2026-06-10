@@ -18,6 +18,7 @@ class SettingsRepository(private val context: Context) {
     private val MODEL = stringPreferencesKey("model")
     private val FIRECRAWL_API_KEY = stringPreferencesKey("firecrawl_api_key")
     private val TEXT_PROVIDER = stringPreferencesKey("text_provider")
+    private val ASSISTANT_LANGUAGE_PREFERENCE = stringPreferencesKey("assistantLanguagePreference")
 
     // Media Generation Settings
     // Create Photo
@@ -81,6 +82,8 @@ class SettingsRepository(private val context: Context) {
     val photoVideoFormat: Flow<String> = context.dataStore.data.map { it[PHOTO_VIDEO_FORMAT] ?: "JSON" }
     val photoVideoImageFormat: Flow<String> = context.dataStore.data.map { it[PHOTO_VIDEO_IMAGE_FORMAT] ?: "base64" }
     val photoVideoDuration: Flow<String> = context.dataStore.data.map { it[PHOTO_VIDEO_DURATION] ?: "5" }
+
+    val assistantLanguagePreference: Flow<String> = context.dataStore.data.map { it[ASSISTANT_LANGUAGE_PREFERENCE] ?: "id" }
 
     suspend fun saveSettings(provider: String, key: String, url: String, path: String, modelName: String, firecrawlKey: String) {
         context.dataStore.edit { prefs ->

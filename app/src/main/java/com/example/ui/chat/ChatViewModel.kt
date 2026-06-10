@@ -169,6 +169,7 @@ class ChatViewModel(
                 val path = settingsRepository.textPath.first()
                 val modelName = settingsRepository.model.first()
                 val firecrawlKey = settingsRepository.firecrawlApiKey.first()
+                val langPref = settingsRepository.assistantLanguagePreference.first()
 
                 if (apiKey.isBlank() || baseUrl.isBlank() || modelName.isBlank()) {
                     _uiState.update {
@@ -236,6 +237,10 @@ class ChatViewModel(
                     ChatMode.NORMAL -> "You are a helpful AI assistant. Provide fast, simple, and direct answers."
                     ChatMode.THINK -> "You are a helpful AI assistant. Approach tasks with careful reasoning and thorough checking. Explain your thought process."
                     ChatMode.THINK_DEEPLY -> "You are a helpful AI assistant. Provide deeper analysis, detailed debugging, and exhaustive step-by-step reasoning. You are better for coding and complex tasks."
+                }
+                
+                if (langPref == "id") {
+                    systemPrompt += "\n\nAlways respond in Bahasa Indonesia. Use clear, simple Indonesian unless the user asks for another language."
                 }
                 
                 if (searchContext.isNotEmpty()) {
