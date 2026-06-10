@@ -425,6 +425,26 @@ fun SettingsScreen(
             // Media Generation Settings
             Text("Media Generation Settings", fontSize = 24.sp, color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.Start))
             Spacer(modifier = Modifier.height(8.dp))
+            
+            // Economy Mode Toggle
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Economy API Mode", fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold)
+                    Text("Uses lower duration, 1 image limit, and compression to save API credits.", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(
+                    checked = uiState.economyMode,
+                    onCheckedChange = { viewModel.updateEconomyMode(it) },
+                    colors = SwitchDefaults.colors(checkedThumbColor = PrimaryNeon, checkedTrackColor = PrimaryNeon.copy(alpha=0.5f))
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+
             Text("Configure Create Photo, Edit Photo, and Photo to Video APIs", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.align(Alignment.Start))
             Spacer(modifier = Modifier.height(24.dp))
 

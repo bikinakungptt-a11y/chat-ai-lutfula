@@ -60,9 +60,24 @@ class StudioViewModel(
         // Keeps generatedMediaUrl, can be used by video
     }
 
-    private fun getFileFromUri(uri: Uri): File? {
+    private fun getFileFromUri(uri: Uri, economyMode: Boolean = false): File? {
         try {
             val tempFile = File.createTempFile("upload", ".png", applicationContext.cacheDir)
+            if (economyMode) {
+                val bitmap = android.graphics.BitmapFactory.decodeStream(applicationContext.contentResolver.openInputStream(uri))
+                if (bitmap != null) {
+                    var scaledBitmap = bitmap
+                    if (bitmap.width > 1024 || bitmap.height > 1024) {
+                        val ratio = minOf(1024f / bitmap.width, 1024f / bitmap.height)
+                        scaledBitmap = android.graphics.Bitmap.createScaledBitmap(bitmap, (bitmap.width * ratio).toInt(), (bitmap.height * ratio).toInt(), true)
+                    }
+                    FileOutputStream(tempFile).use { out ->
+                        scaledBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 70, out)
+                    }
+                    return tempFile
+                }
+            }
+            
             applicationContext.contentResolver.openInputStream(uri)?.use { input ->
                 FileOutputStream(tempFile).use { output ->
                     input.copyTo(output)
@@ -74,8 +89,22 @@ class StudioViewModel(
         }
     }
 
-    private fun getBase64FromUri(uri: Uri): String? {
+    private fun getBase64FromUri(uri: Uri, economyMode: Boolean = false): String? {
         return try {
+            if (economyMode) {
+                val bitmap = android.graphics.BitmapFactory.decodeStream(applicationContext.contentResolver.openInputStream(uri))
+                if (bitmap != null) {
+                    var scaledBitmap = bitmap
+                    if (bitmap.width > 1024 || bitmap.height > 1024) {
+                        val ratio = minOf(1024f / bitmap.width, 1024f / bitmap.height)
+                        scaledBitmap = android.graphics.Bitmap.createScaledBitmap(bitmap, (bitmap.width * ratio).toInt(), (bitmap.height * ratio).toInt(), true)
+                    }
+                    val outputStream = java.io.ByteArrayOutputStream()
+                    scaledBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 70, outputStream)
+                    return Base64.getEncoder().encodeToString(outputStream.toByteArray())
+                }
+            }
+            
             val bytes = applicationContext.contentResolver.openInputStream(uri)?.readBytes()
             if (bytes != null) {
                 Base64.getEncoder().encodeToString(bytes)
@@ -130,6 +159,7 @@ class StudioViewModel(
         val apiKey = settingsRepository.createPhotoApiKey.first()
         val model = settingsRepository.createPhotoModel.first()
         val format = settingsRepository.createPhotoFormat.first()
+        val economyMode = settingsRepository.economyMode.first()
 
         if (baseUrl.isBlank() || endpoint.isBlank() || apiKey.isBlank()) {
             _uiState.update { it.copy(isGenerating = false, error = "Please configure Create Photo Settings first.") }
@@ -137,16 +167,18 @@ class StudioViewModel(
         }
 
         val url = "$baseUrl/$endpoint"
-        val requestBody = if (format == "multipart") {
-             MultipartBody.Builder()
+         val requestBody = if (format == "multipart") {
+             val builder = MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
                 .addFormDataPart("prompt", prompt)
                 .addFormDataPart("model", model)
-                .build()
+             if (economyMode) builder.addFormDataPart("n", "1")
+             builder.build()
         } else {
             JSONObject().apply {
                 put("prompt", prompt)
                 if (model.isNotBlank()) put("model", model)
+                if (economyMode) put("n", 1)
             }.toString().toRequestBody("application/json".toMediaType())
         }
 
@@ -174,6 +206,7 @@ class StudioViewModel(
         val model = settingsRepository.editPhotoModel.first()
         val format = settingsRepository.editPhotoFormat.first()
         val imageFormatSetting = settingsRepository.editPhotoImageFormat.first()
+        val economyMode = settingsRepository.economyMode.first()
 
         if (baseUrl.isBlank() || endpoint.isBlank() || apiKey.isBlank()) {
             _uiState.update { it.copy(isGenerating = false, error = "Please configure Edit Photo Settings first.") }
@@ -187,13 +220,13 @@ class StudioViewModel(
             if (prompt.isNotBlank()) builder.addFormDataPart("prompt", prompt)
             if (model.isNotBlank()) builder.addFormDataPart("model", model)
             
-            val tempFile = getFileFromUri(imageUri)
+            val tempFile = getFileFromUri(imageUri, economyMode)
             if (tempFile != null) {
                 builder.addFormDataPart("image", "image.png", tempFile.asRequestBody("image/png".toMediaType()))
             }
             builder.build()
         } else {
-            val b64 = getBase64FromUri(imageUri)
+            val b64 = getBase64FromUri(imageUri, economyMode)
             JSONObject().apply {
                 if (prompt.isNotBlank()) put("prompt", prompt)
                 if (model.isNotBlank()) put("model", model)
@@ -311,6 +344,8 @@ class StudioViewModel(
         val format = settingsRepository.photoVideoFormat.first()
         val imageFormatSetting = settingsRepository.photoVideoImageFormat.first()
         val duration = settingsRepository.photoVideoDuration.first()
+        val economyMode = settingsRepository.economyMode.first()
+        val actualDuration = if (economyMode) "5" else duration
 
         if (baseUrl.isBlank() || createEndpoint.isBlank() || apiKey.isBlank()) {
             _uiState.update { it.copy(isGenerating = false, error = "Please configure Photo to Video Settings first.") }
@@ -323,14 +358,14 @@ class StudioViewModel(
             val builder = MultipartBody.Builder().setType(MultipartBody.FORM)
             if (prompt.isNotBlank()) builder.addFormDataPart("prompt", prompt)
             if (model.isNotBlank()) builder.addFormDataPart("model", model)
-            if (duration.isNotBlank()) builder.addFormDataPart("duration", duration)
+            if (actualDuration.isNotBlank()) builder.addFormDataPart("duration", actualDuration)
             
             // Just try file directly, since generating Media URL gives http/https link that we'd have to download or use as url param.
             val stringUri = imageUri.toString()
             if (stringUri.startsWith("http")) { // Generated media url usually
                 builder.addFormDataPart("image_url", stringUri)
             } else {
-                val tempFile = getFileFromUri(imageUri)
+                val tempFile = getFileFromUri(imageUri, economyMode)
                 if (tempFile != null) {
                     builder.addFormDataPart("image", "image.png", tempFile.asRequestBody("image/png".toMediaType()))
                 }
@@ -341,13 +376,13 @@ class StudioViewModel(
             val imgStr = if (stringUri.startsWith("http")) {
                 if (imageFormatSetting == "base64") getBase64FromUrl(stringUri) else stringUri
             } else {
-                getBase64FromUri(imageUri)
+                getBase64FromUri(imageUri, economyMode)
             }
             
             JSONObject().apply {
                 if (prompt.isNotBlank()) put("prompt", prompt)
                 if (model.isNotBlank()) put("model", model)
-                if (duration.isNotBlank()) put("duration", duration)
+                if (actualDuration.isNotBlank()) put("duration", actualDuration)
                 if (imageFormatSetting == "url") {
                     put("image_url", imgStr ?: "")
                 } else {

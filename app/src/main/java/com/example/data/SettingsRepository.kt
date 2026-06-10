@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -49,6 +50,8 @@ class SettingsRepository(private val context: Context) {
     private val PHOTO_VIDEO_FORMAT = stringPreferencesKey("photo_video_format")
     private val PHOTO_VIDEO_IMAGE_FORMAT = stringPreferencesKey("photo_video_image_format")
     private val PHOTO_VIDEO_DURATION = stringPreferencesKey("photo_video_duration")
+    
+    private val ECONOMY_MODE = booleanPreferencesKey("economy_mode")
 
     val textProvider: Flow<String> = context.dataStore.data.map { it[TEXT_PROVIDER] ?: "" }
     val apiKey: Flow<String> = context.dataStore.data.map { it[API_KEY] ?: "" }
@@ -82,6 +85,8 @@ class SettingsRepository(private val context: Context) {
     val photoVideoFormat: Flow<String> = context.dataStore.data.map { it[PHOTO_VIDEO_FORMAT] ?: "JSON" }
     val photoVideoImageFormat: Flow<String> = context.dataStore.data.map { it[PHOTO_VIDEO_IMAGE_FORMAT] ?: "base64" }
     val photoVideoDuration: Flow<String> = context.dataStore.data.map { it[PHOTO_VIDEO_DURATION] ?: "5" }
+
+    val economyMode: Flow<Boolean> = context.dataStore.data.map { it[ECONOMY_MODE] ?: true }
 
     val assistantLanguagePreference: Flow<String> = context.dataStore.data.map { it[ASSISTANT_LANGUAGE_PREFERENCE] ?: "id" }
 
@@ -131,6 +136,12 @@ class SettingsRepository(private val context: Context) {
             prefs[PHOTO_VIDEO_FORMAT] = format
             prefs[PHOTO_VIDEO_IMAGE_FORMAT] = imageFormat
             prefs[PHOTO_VIDEO_DURATION] = duration
+        }
+    }
+
+    suspend fun saveEconomyMode(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[ECONOMY_MODE] = enabled
         }
     }
 }

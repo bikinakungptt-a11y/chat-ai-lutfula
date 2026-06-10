@@ -83,7 +83,9 @@ data class SettingsUiState(
 
     val isPhotoVideoTesting: Boolean = false,
     val photoVideoTestResult: String? = null,
-    val photoVideoTestError: String? = null
+    val photoVideoTestError: String? = null,
+    
+    val economyMode: Boolean = true
 )
 
 class SettingsViewModel(
@@ -147,7 +149,8 @@ class SettingsViewModel(
                     photoVideoModel = settingsRepository.photoVideoModel.first(),
                     photoVideoFormat = settingsRepository.photoVideoFormat.first(),
                     photoVideoImageFormat = settingsRepository.photoVideoImageFormat.first(),
-                    photoVideoDuration = settingsRepository.photoVideoDuration.first()
+                    photoVideoDuration = settingsRepository.photoVideoDuration.first(),
+                    economyMode = settingsRepository.economyMode.first()
                 )
             }
         }
@@ -356,6 +359,13 @@ class SettingsViewModel(
     fun updatePhotoVideoFormat(value: String) { _uiState.update { it.copy(photoVideoFormat = value, isPhotoVideoSaved = false) } }
     fun updatePhotoVideoImageFormat(value: String) { _uiState.update { it.copy(photoVideoImageFormat = value, isPhotoVideoSaved = false) } }
     fun updatePhotoVideoDuration(value: String) { _uiState.update { it.copy(photoVideoDuration = value, isPhotoVideoSaved = false) } }
+
+    fun updateEconomyMode(value: Boolean) {
+        _uiState.update { it.copy(economyMode = value) }
+        viewModelScope.launch {
+            settingsRepository.saveEconomyMode(value)
+        }
+    }
 
     fun savePhotoVideoSettings() {
         viewModelScope.launch {

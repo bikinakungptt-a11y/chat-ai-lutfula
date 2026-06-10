@@ -45,6 +45,7 @@ fun StudioScreen(
     var showPhotoPermissionDialog by remember { mutableStateOf(false) }
     var showCameraPermissionDialog by remember { mutableStateOf(false) }
     var tempCameraUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var showVideoConfirmation by remember { mutableStateOf(false) }
     
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -125,6 +126,23 @@ fun StudioScreen(
                 TextButton(onClick = { showCameraPermissionDialog = false }) { Text("Cancel", color = Color.Gray) }
             },
             containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    }
+
+    if (showVideoConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showVideoConfirmation = false },
+            title = { Text("Generate Video?") },
+            text = { Text("This may use more API credit. Continue?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showVideoConfirmation = false
+                    viewModel.generate()
+                }) { Text("Continue") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showVideoConfirmation = false }) { Text("Cancel") }
+            }
         )
     }
 
@@ -366,7 +384,11 @@ fun StudioScreen(
                             .clip(RoundedCornerShape(20.dp))
                             .background(Brush.horizontalGradient(listOf(PrimaryBlue, PrimaryNeon)))
                             .clickable(enabled = !uiState.isGenerating) {
-                                viewModel.generate()
+                                if (uiState.selectedTab == 2) {
+                                    showVideoConfirmation = true
+                                } else {
+                                    viewModel.generate()
+                                }
                             },
                         contentAlignment = Alignment.Center
                     ) {
