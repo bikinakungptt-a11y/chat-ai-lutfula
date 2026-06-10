@@ -70,7 +70,20 @@ data class SettingsUiState(
     // Save states
     val isCreatePhotoSaved: Boolean = false,
     val isEditPhotoSaved: Boolean = false,
-    val isPhotoVideoSaved: Boolean = false
+    val isPhotoVideoSaved: Boolean = false,
+
+    // Test states
+    val isCreatePhotoTesting: Boolean = false,
+    val createPhotoTestResult: String? = null,
+    val createPhotoTestError: String? = null,
+
+    val isEditPhotoTesting: Boolean = false,
+    val editPhotoTestResult: String? = null,
+    val editPhotoTestError: String? = null,
+
+    val isPhotoVideoTesting: Boolean = false,
+    val photoVideoTestResult: String? = null,
+    val photoVideoTestError: String? = null
 )
 
 class SettingsViewModel(
@@ -262,6 +275,31 @@ class SettingsViewModel(
         }
     }
 
+    fun testCreatePhotoConnection() {
+        val state = _uiState.value
+        if (state.createPhotoBaseUrl.isBlank() || state.createPhotoApiKey.isBlank() || state.createPhotoEndpoint.isBlank() || state.createPhotoModel.isBlank()) {
+            _uiState.update { it.copy(createPhotoTestError = "Base URL, API Key, Endpoint, and Model are required") }
+            return
+        }
+        _uiState.update { it.copy(isCreatePhotoTesting = true, createPhotoTestResult = null, createPhotoTestError = null) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = executeMediaTest(
+                baseUrl = state.createPhotoBaseUrl,
+                endpoint = state.createPhotoEndpoint,
+                apiKey = state.createPhotoApiKey,
+                model = state.createPhotoModel,
+                format = state.createPhotoFormat
+            )
+            withContext(Dispatchers.Main) {
+                if (result.isSuccess) {
+                    _uiState.update { it.copy(isCreatePhotoTesting = false, createPhotoTestResult = "Connection successful") }
+                } else {
+                    _uiState.update { it.copy(isCreatePhotoTesting = false, createPhotoTestError = result.exceptionOrNull()?.message ?: "Unknown error") }
+                }
+            }
+        }
+    }
+
     // Edit Photo Updaters
     fun updateEditPhotoProvider(value: String) { _uiState.update { it.copy(editPhotoProvider = value, isEditPhotoSaved = false) } }
     fun updateEditPhotoApiKey(value: String) { _uiState.update { it.copy(editPhotoApiKey = value, isEditPhotoSaved = false) } }
@@ -279,6 +317,31 @@ class SettingsViewModel(
                 state.editPhotoEndpoint, state.editPhotoModel, state.editPhotoFormat, state.editPhotoImageFormat
             )
             _uiState.update { it.copy(isEditPhotoSaved = true) }
+        }
+    }
+
+    fun testEditPhotoConnection() {
+        val state = _uiState.value
+        if (state.editPhotoBaseUrl.isBlank() || state.editPhotoApiKey.isBlank() || state.editPhotoEndpoint.isBlank() || state.editPhotoModel.isBlank()) {
+            _uiState.update { it.copy(editPhotoTestError = "Base URL, API Key, Endpoint, and Model are required") }
+            return
+        }
+        _uiState.update { it.copy(isEditPhotoTesting = true, editPhotoTestResult = null, editPhotoTestError = null) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = executeMediaTest(
+                baseUrl = state.editPhotoBaseUrl,
+                endpoint = state.editPhotoEndpoint,
+                apiKey = state.editPhotoApiKey,
+                model = state.editPhotoModel,
+                format = state.editPhotoFormat
+            )
+            withContext(Dispatchers.Main) {
+                if (result.isSuccess) {
+                    _uiState.update { it.copy(isEditPhotoTesting = false, editPhotoTestResult = "Connection successful") }
+                } else {
+                    _uiState.update { it.copy(isEditPhotoTesting = false, editPhotoTestError = result.exceptionOrNull()?.message ?: "Unknown error") }
+                }
+            }
         }
     }
 
@@ -303,6 +366,81 @@ class SettingsViewModel(
                 state.photoVideoModel, state.photoVideoFormat, state.photoVideoImageFormat, state.photoVideoDuration
             )
             _uiState.update { it.copy(isPhotoVideoSaved = true) }
+        }
+    }
+
+    fun testPhotoToVideoConnection() {
+        val state = _uiState.value
+        if (state.photoVideoBaseUrl.isBlank() || state.photoVideoApiKey.isBlank() || state.photoVideoCreateEndpoint.isBlank() || state.photoVideoModel.isBlank()) {
+            _uiState.update { it.copy(photoVideoTestError = "Base URL, API Key, create Endpoint, and Model are required") }
+            return
+        }
+        _uiState.update { it.copy(isPhotoVideoTesting = true, photoVideoTestResult = null, photoVideoTestError = null) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = executeMediaTest(
+                baseUrl = state.photoVideoBaseUrl,
+                endpoint = state.photoVideoCreateEndpoint,
+                apiKey = state.photoVideoApiKey,
+                model = state.photoVideoModel,
+                format = state.photoVideoFormat
+            )
+            // Ideally we'd test status/result endpoints if the API flow requires them.
+            // But checking the createEndpoint is a good baseline measure connection.
+            withContext(Dispatchers.Main) {
+                if (result.isSuccess) {
+                    _uiState.update { it.copy(isPhotoVideoTesting = false, photoVideoTestResult = "Connection successful") }
+                } else {
+                    _uiState.update { it.copy(isPhotoVideoTesting = false, photoVideoTestError = result.exceptionOrNull()?.message ?: "Unknown error") }
+                }
+            }
+        }
+    }
+
+    private suspend fun executeMediaTest(baseUrl: String, endpoint: String, apiKey: String, model: String, format: String): Result<Unit> {
+        return try {
+            val cleanBaseUrl = baseUrl.trimEnd('/')
+            val cleanEndpoint = if (endpoint.startsWith("/")) endpoint else "/$endpoint"
+            val url = "$cleanBaseUrl$cleanEndpoint"
+
+            val requestBody = if (format.equals("multipart", ignoreCase = true)) {
+                okhttp3.MultipartBody.Builder()
+                    .setType(okhttp3.MultipartBody.FORM)
+                    .addFormDataPart("model", model)
+                    .addFormDataPart("prompt", "test prompt")
+                    // Note: In real multipart usage we might upload an image file
+                    .build()
+            } else {
+                val jsonStr = """{"model":"$model", "prompt":"test prompt"}"""
+                jsonStr.toRequestBody("application/json; charset=utf-8".toMediaType())
+            }
+
+            val requestBuilder = Request.Builder()
+                .url(url)
+                .addHeader("Authorization", "Bearer $apiKey")
+                .post(requestBody)
+
+            if (format.equals("JSON", ignoreCase = true)) {
+                requestBuilder.addHeader("Content-Type", "application/json")
+            }
+
+            val response = okHttpClient.newCall(requestBuilder.build()).execute()
+            val responseBodyStr = response.body?.string()
+
+            if (response.isSuccessful) {
+                Result.success(Unit)
+            } else {
+                val errorMsg = when (response.code) {
+                    401 -> "401 Unauthorized - Check your API key."
+                    402 -> "402 Payment Required - No credit or check billing."
+                    404 -> "404 Not Found - Wrong Base URL or path."
+                    429 -> "429 Rate Limit Exceeded - Sending too many requests."
+                    else -> "HTTP ${response.code}: $responseBodyStr"
+                }
+                Result.failure(Exception(errorMsg))
+            }
+        } catch (e: Exception) {
+            // Include message for other typical errors
+            Result.failure(Exception("Network Error or CORS/proxy: ${e.message}"))
         }
     }
     

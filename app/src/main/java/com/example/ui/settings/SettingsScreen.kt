@@ -430,7 +430,6 @@ fun SettingsScreen(
 
             // A. Create Photo Settings
             MediaSettingsCard("Create Photo Settings", 
-                provider = uiState.createPhotoProvider, onProviderChange = { viewModel.updateCreatePhotoProvider(it) },
                 apiKey = uiState.createPhotoApiKey, onApiKeyChange = { viewModel.updateCreatePhotoApiKey(it) },
                 baseUrl = uiState.createPhotoBaseUrl, onBaseUrlChange = { viewModel.updateCreatePhotoBaseUrl(it) },
                 endpoint = uiState.createPhotoEndpoint, onEndpointChange = { viewModel.updateCreatePhotoEndpoint(it) },
@@ -438,13 +437,16 @@ fun SettingsScreen(
                 format = uiState.createPhotoFormat, onFormatChange = { viewModel.updateCreatePhotoFormat(it) },
                 onSave = { viewModel.saveCreatePhotoSettings() },
                 isSaved = uiState.isCreatePhotoSaved,
+                onTestConnection = { viewModel.testCreatePhotoConnection() },
+                isTesting = uiState.isCreatePhotoTesting,
+                testResult = uiState.createPhotoTestResult,
+                testError = uiState.createPhotoTestError,
                 passwordVisible = passwordVisible, onPasswordVisibleChange = { passwordVisible = it }
             )
             Spacer(modifier = Modifier.height(24.dp))
 
             // B. Edit Photo Settings
             MediaSettingsCard("Edit Photo Settings", 
-                provider = uiState.editPhotoProvider, onProviderChange = { viewModel.updateEditPhotoProvider(it) },
                 apiKey = uiState.editPhotoApiKey, onApiKeyChange = { viewModel.updateEditPhotoApiKey(it) },
                 baseUrl = uiState.editPhotoBaseUrl, onBaseUrlChange = { viewModel.updateEditPhotoBaseUrl(it) },
                 endpoint = uiState.editPhotoEndpoint, onEndpointChange = { viewModel.updateEditPhotoEndpoint(it) },
@@ -453,13 +455,16 @@ fun SettingsScreen(
                 imageFormat = uiState.editPhotoImageFormat, onImageFormatChange = { viewModel.updateEditPhotoImageFormat(it) },
                 onSave = { viewModel.saveEditPhotoSettings() },
                 isSaved = uiState.isEditPhotoSaved,
+                onTestConnection = { viewModel.testEditPhotoConnection() },
+                isTesting = uiState.isEditPhotoTesting,
+                testResult = uiState.editPhotoTestResult,
+                testError = uiState.editPhotoTestError,
                 passwordVisible = passwordVisible, onPasswordVisibleChange = { passwordVisible = it }
             )
             Spacer(modifier = Modifier.height(24.dp))
 
             // C. Photo to Video Settings
             MediaSettingsCard("Photo to Video Settings", 
-                provider = uiState.photoVideoProvider, onProviderChange = { viewModel.updatePhotoVideoProvider(it) },
                 apiKey = uiState.photoVideoApiKey, onApiKeyChange = { viewModel.updatePhotoVideoApiKey(it) },
                 baseUrl = uiState.photoVideoBaseUrl, onBaseUrlChange = { viewModel.updatePhotoVideoBaseUrl(it) },
                 endpoint = uiState.photoVideoCreateEndpoint, onEndpointChange = { viewModel.updatePhotoVideoCreateEndpoint(it) },
@@ -471,6 +476,10 @@ fun SettingsScreen(
                 duration = uiState.photoVideoDuration, onDurationChange = { viewModel.updatePhotoVideoDuration(it) },
                 onSave = { viewModel.savePhotoVideoSettings() },
                 isSaved = uiState.isPhotoVideoSaved,
+                onTestConnection = { viewModel.testPhotoToVideoConnection() },
+                isTesting = uiState.isPhotoVideoTesting,
+                testResult = uiState.photoVideoTestResult,
+                testError = uiState.photoVideoTestError,
                 passwordVisible = passwordVisible, onPasswordVisibleChange = { passwordVisible = it }
             )
 
@@ -485,7 +494,6 @@ data class ProviderData(val name: String, val subtitle: String, val icon: ImageV
 @Composable
 fun MediaSettingsCard(
     title: String,
-    provider: String, onProviderChange: (String) -> Unit,
     apiKey: String, onApiKeyChange: (String) -> Unit,
     baseUrl: String, onBaseUrlChange: (String) -> Unit,
     endpoint: String, onEndpointChange: (String) -> Unit,
@@ -497,6 +505,10 @@ fun MediaSettingsCard(
     duration: String? = null, onDurationChange: ((String) -> Unit)? = null,
     onSave: () -> Unit,
     isSaved: Boolean,
+    onTestConnection: () -> Unit,
+    isTesting: Boolean,
+    testResult: String?,
+    testError: String?,
     passwordVisible: Boolean, onPasswordVisibleChange: (Boolean) -> Unit
 ) {
     Card(
@@ -509,13 +521,6 @@ fun MediaSettingsCard(
         Column(modifier = Modifier.padding(16.dp)) {
             Text(title, fontSize = 16.sp, color = Color.White, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(16.dp))
-
-            // Provider
-            OutlinedTextField(
-                value = provider, onValueChange = onProviderChange, label = { Text("Provider Name") },
-                modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp)
-            )
-            Spacer(modifier = Modifier.height(8.dp))
 
             // BaseModel
             OutlinedTextField(
@@ -619,11 +624,50 @@ fun MediaSettingsCard(
             Spacer(modifier = Modifier.height(8.dp))
             
             OutlinedButton(
-                onClick = { /* Simulated */ },
+                onClick = onTestConnection,
                 modifier = Modifier.fillMaxWidth(),
-                border = androidx.compose.foundation.BorderStroke(1.dp, OutlineDark)
+                border = androidx.compose.foundation.BorderStroke(1.dp, OutlineDark),
+                enabled = !isTesting
             ) {
-                Text("Test Connection", color = Color.White)
+                if (isTesting) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White, strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text("Testing...", color = Color.White)
+                } else {
+                    Text("Test Connection", color = Color.White)
+                }
+            }
+
+            if (testError != null) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color.Red.copy(alpha = 0.1f), RoundedCornerShape(16.dp))
+                        .border(1.dp, Color.Red.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Connection Failed", color = Color.Red, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text(testError, color = Color.Red.copy(alpha = 0.8f), fontSize = 12.sp)
+                    }
+                }
+            } else if (testResult != null) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(SuccessGreen.copy(alpha = 0.1f), RoundedCornerShape(16.dp))
+                        .border(1.dp, SuccessGreen.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Connection Successful", color = SuccessGreen, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text(testResult, color = SuccessGreen.copy(alpha = 0.8f), fontSize = 12.sp)
+                    }
+                }
             }
         }
     }
