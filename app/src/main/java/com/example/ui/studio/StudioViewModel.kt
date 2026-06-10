@@ -91,7 +91,8 @@ class StudioViewModel(
 
     private fun getBase64FromUri(uri: Uri, economyMode: Boolean = false): String? {
         return try {
-            if (economyMode) {
+            val mimeType = applicationContext.contentResolver.getType(uri) ?: "image/jpeg"
+            val base64Str = if (economyMode) {
                 val bitmap = android.graphics.BitmapFactory.decodeStream(applicationContext.contentResolver.openInputStream(uri))
                 if (bitmap != null) {
                     var scaledBitmap = bitmap
@@ -101,13 +102,17 @@ class StudioViewModel(
                     }
                     val outputStream = java.io.ByteArrayOutputStream()
                     scaledBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 70, outputStream)
-                    return Base64.getEncoder().encodeToString(outputStream.toByteArray())
-                }
+                    Base64.getEncoder().encodeToString(outputStream.toByteArray())
+                } else null
+            } else {
+                val bytes = applicationContext.contentResolver.openInputStream(uri)?.readBytes()
+                if (bytes != null) {
+                    Base64.getEncoder().encodeToString(bytes)
+                } else null
             }
-            
-            val bytes = applicationContext.contentResolver.openInputStream(uri)?.readBytes()
-            if (bytes != null) {
-                Base64.getEncoder().encodeToString(bytes)
+            if (base64Str != null) {
+                val finalMime = if (economyMode) "image/jpeg" else mimeType
+                "data:$finalMime;base64,$base64Str"
             } else null
         } catch (e: Exception) {
             null
@@ -119,8 +124,12 @@ class StudioViewModel(
             val request = Request.Builder().url(urlString).build()
             val response = okHttpClient.newCall(request).execute()
             if (response.isSuccessful) {
+                val mimeType = response.header("Content-Type") ?: "image/jpeg"
                 val bytes = response.body?.bytes()
-                if (bytes != null) Base64.getEncoder().encodeToString(bytes) else null
+                if (bytes != null) {
+                    val base64Str = Base64.getEncoder().encodeToString(bytes)
+                    "data:$mimeType;base64,$base64Str"
+                } else null
             } else null
         } catch (e: Exception) {
             null
@@ -221,6 +230,8 @@ class StudioViewModel(
         }
 
         val url = "$baseUrl/$endpoint"
+        android.util.Log.d("StudioViewModel", "Edit Photo URL: $url | Format: $format | ImageFormat: $imageFormatSetting")
+        android.util.Log.d("StudioViewModel", "Edit Photo URI type: ${if (imageUri.toString().startsWith("http")) "http/https" else if (imageUri.toString().startsWith("content://")) "content://" else "file://"}")
         
         val requestBody = if (format == "multipart") {
             val builder = MultipartBody.Builder().setType(MultipartBody.FORM)
@@ -237,16 +248,25 @@ class StudioViewModel(
             val imgStr = if (stringUri.startsWith("http")) {
                 if (imageFormatSetting == "base64") getBase64FromUrl(stringUri) else stringUri
             } else {
+                if (imageFormatSetting == "url") {
+                    _uiState.update { it.copy(isGenerating = false, error = "URL image format requires an online image URL. Local photos should use base64 or multipart.") }
+                    return
+                }
                 getBase64FromUri(imageUri, economyMode)
+            }
+            
+            if (imgStr == null) {
+                _uiState.update { it.copy(isGenerating = false, error = "Failed to read selected photo. Please choose another image.") }
+                return
             }
             
             JSONObject().apply {
                 if (prompt.isNotBlank()) put("prompt", prompt)
                 if (model.isNotBlank()) put("model", model)
                 if (imageFormatSetting == "url") {
-                     put("image_url", imgStr ?: "")
+                     put("image_url", imgStr)
                 } else {
-                     put("image", imgStr ?: "")
+                     put("image", imgStr)
                 }
             }.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
         }
@@ -338,14 +358,16 @@ class StudioViewModel(
                 _uiState.update { it.copy(isGenerating = false, error = "Failed to extract image from response.") }
             }
         } else {
+            val safeBody = if (body.length > 200) body.substring(0, 200) + "..." else body
             val errorMsg = when (code) {
-                400 -> "Invalid request. Check model, prompt, or required image input.\nProvider output: $body"
+                400 -> "Invalid request. Check model, prompt, or required image input.\nProvider output: $safeBody"
                 401 -> "Invalid API key."
                 402 -> "Provider credit or billing issue."
                 404 -> "Endpoint not found. Check Base URL and Path in Settings."
-                415 -> "Error $code: Unsupported Media Type. Check Request Format (JSON vs multipart) and endpoint.\nProvider output: $body"
+                415 -> "Error $code: Unsupported Media Type. Check Request Format (JSON vs multipart) and endpoint.\nProvider output: $safeBody"
+                422 -> "Image format not accepted by provider. Try multipart or base64 data URI.\nProvider output: $safeBody"
                 429 -> "Rate limit exceeded."
-                else -> "Error $code: $body"
+                else -> "Error $code: $safeBody"
             }
             _uiState.update { it.copy(isGenerating = false, error = errorMsg) }
         }
@@ -377,6 +399,8 @@ class StudioViewModel(
         }
 
         val url = "$baseUrl/$createEndpoint"
+        android.util.Log.d("StudioViewModel", "Photo to Video URL: $url | Format: $format | ImageFormat: $imageFormatSetting")
+        android.util.Log.d("StudioViewModel", "Photo to Video URI type: ${if (imageUri.toString().startsWith("http")) "http/https" else if (imageUri.toString().startsWith("content://")) "content://" else "file://"}")
         
         val requestBody = if (format == "multipart") {
             val builder = MultipartBody.Builder().setType(MultipartBody.FORM)
@@ -399,14 +423,21 @@ class StudioViewModel(
             val stringUri = imageUri.toString()
             val imgStr = if (stringUri.startsWith("http")) {
                 if (imageFormatSetting == "base64") {
-                    val b64 = getBase64FromUrl(stringUri)
-                    if (b64 != null) "data:image/jpeg;base64,$b64" else null
+                    getBase64FromUrl(stringUri)
                 } else {
                     stringUri
                 }
             } else {
-                val b64 = getBase64FromUri(imageUri, economyMode)
-                if (b64 != null) "data:image/jpeg;base64,$b64" else null
+                if (imageFormatSetting == "url") {
+                    _uiState.update { it.copy(isGenerating = false, error = "URL image format requires an online image URL. Local photos should use base64 or multipart.") }
+                    return
+                }
+                getBase64FromUri(imageUri, economyMode)
+            }
+            
+            if (imgStr == null) {
+                _uiState.update { it.copy(isGenerating = false, error = "Failed to read selected photo. Please choose another image.") }
+                return
             }
             
             JSONObject().apply {
