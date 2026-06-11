@@ -170,7 +170,10 @@ fun StudioScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp),
+                .padding(horizontal = 16.dp)
+                .padding(top = 16.dp)
+                .imePadding()
+                .navigationBarsPadding(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Tabs
@@ -382,6 +385,7 @@ fun StudioScreen(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(bottom = 10.dp)
                     .heightIn(min = 56.dp, max = 120.dp),
                 shape = RoundedCornerShape(24.dp),
                 colors = OutlinedTextFieldDefaults.colors(

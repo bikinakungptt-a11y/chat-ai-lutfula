@@ -221,7 +221,8 @@ class StudioViewModel(
         val apiKey = settingsRepository.editPhotoApiKey.first()
         val model = settingsRepository.editPhotoModel.first()
         val format = settingsRepository.editPhotoFormat.first()
-        val imageFormatSetting = settingsRepository.editPhotoImageFormat.first()
+        val imageFormatRaw = settingsRepository.editPhotoImageFormat.first()
+        val imageFormatSetting = if (imageFormatRaw == "url") "multipart" else imageFormatRaw
         val economyMode = settingsRepository.economyMode.first()
 
         if (baseUrl.isBlank() || endpoint.isBlank() || apiKey.isBlank()) {
@@ -262,11 +263,7 @@ class StudioViewModel(
             JSONObject().apply {
                 if (prompt.isNotBlank()) put("prompt", prompt)
                 if (model.isNotBlank()) put("model", model)
-                if (imageFormatSetting == "url") {
-                     put("image_url", imgStr ?: "")
-                } else {
-                     put("image", imgStr ?: "")
-                }
+                put("image", imgStr)
             }.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
         }
 
@@ -387,7 +384,8 @@ class StudioViewModel(
         val apiKey = settingsRepository.photoVideoApiKey.first()
         val model = settingsRepository.photoVideoModel.first()
         val format = settingsRepository.photoVideoFormat.first()
-        val imageFormatSetting = settingsRepository.photoVideoImageFormat.first()
+        val imageFormatRaw = settingsRepository.photoVideoImageFormat.first()
+        val imageFormatSetting = if (imageFormatRaw == "url") "multipart" else imageFormatRaw
         val duration = settingsRepository.photoVideoDuration.first()
         val economyMode = settingsRepository.economyMode.first()
         val actualDuration = if (economyMode) "5" else duration
@@ -443,11 +441,7 @@ class StudioViewModel(
                     }
                     put("image", imageObj)
                 } else {
-                    if (imageFormatSetting == "url") {
-                        put("image_url", imgStr ?: "")
-                    } else {
-                        put("image", imgStr ?: "")
-                    }
+                    put("image", imgStr ?: "")
                 }
             }.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
         }
@@ -547,8 +541,7 @@ class StudioViewModel(
                             }
                         }
                     } else if (status == "failed" || status == "error") {
-                        val safeBody = if (body.length > 200) body.substring(0, 200) + "..." else body
-                        _uiState.update { it.copy(isGenerating = false, error = "Video generation failed. Provider output: $safeBody", videoStatus = null) }
+                        _uiState.update { it.copy(isGenerating = false, error = "Video generation failed.", videoStatus = null) }
                         return
                     } else {
                         // Pending / Processing

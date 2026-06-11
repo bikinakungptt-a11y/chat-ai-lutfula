@@ -614,7 +614,7 @@ fun MediaSettingsCard(
                     Text("Image Input Format:", color = Color.White, fontSize = 12.sp, modifier = Modifier.weight(1f))
                 }
                 Row(modifier = Modifier.padding(start = 16.dp)) {
-                    val formats = listOf("base64", "multipart", "url")
+                    val formats = listOf("base64", "multipart")
                     formats.forEach { option ->
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { onImageFormatChange(option) }.padding(end = 8.dp)) {
                             RadioButton(selected = imageFormat == option, onClick = { onImageFormatChange(option) }, modifier = Modifier.size(24.dp))

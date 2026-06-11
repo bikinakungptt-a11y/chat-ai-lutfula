@@ -138,7 +138,7 @@ class SettingsViewModel(
                     editPhotoEndpoint = settingsRepository.editPhotoEndpoint.first(),
                     editPhotoModel = settingsRepository.editPhotoModel.first(),
                     editPhotoFormat = settingsRepository.editPhotoFormat.first(),
-                    editPhotoImageFormat = settingsRepository.editPhotoImageFormat.first(),
+                    editPhotoImageFormat = settingsRepository.editPhotoImageFormat.first().let { fmt -> if (fmt == "url") "multipart" else fmt },
                     
                     photoVideoProvider = settingsRepository.photoVideoProvider.first(),
                     photoVideoApiKey = settingsRepository.photoVideoApiKey.first(),
@@ -148,7 +148,7 @@ class SettingsViewModel(
                     photoVideoResultEndpoint = settingsRepository.photoVideoResultEndpoint.first(),
                     photoVideoModel = settingsRepository.photoVideoModel.first(),
                     photoVideoFormat = settingsRepository.photoVideoFormat.first(),
-                    photoVideoImageFormat = settingsRepository.photoVideoImageFormat.first(),
+                    photoVideoImageFormat = settingsRepository.photoVideoImageFormat.first().let { fmt -> if (fmt == "url") "multipart" else fmt },
                     photoVideoDuration = settingsRepository.photoVideoDuration.first(),
                     economyMode = settingsRepository.economyMode.first()
                 )
