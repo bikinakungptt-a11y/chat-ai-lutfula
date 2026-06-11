@@ -221,7 +221,8 @@ class StudioViewModel(
         val apiKey = settingsRepository.editPhotoApiKey.first()
         val model = settingsRepository.editPhotoModel.first()
         val format = settingsRepository.editPhotoFormat.first()
-        val imageFormatSetting = settingsRepository.editPhotoImageFormat.first()
+        val imageFormatRaw = settingsRepository.editPhotoImageFormat.first()
+        val imageFormatSetting = if (imageFormatRaw == "url") "multipart" else imageFormatRaw
         val economyMode = settingsRepository.economyMode.first()
 
         if (baseUrl.isBlank() || endpoint.isBlank() || apiKey.isBlank()) {
@@ -240,7 +241,10 @@ class StudioViewModel(
             
             val tempFile = getFileFromUri(imageUri, economyMode)
             if (tempFile != null) {
-                builder.addFormDataPart("image", "image.png", tempFile.asRequestBody("image/png".toMediaType()))
+                // If economyMode is active or real type is jpeg, sending as jpeg is safer
+                val mediaType = if (economyMode) "image/jpeg".toMediaType() else "image/*".toMediaType()
+                val filename = if (economyMode) "image.jpg" else "image.jpg"
+                builder.addFormDataPart("image", filename, tempFile.asRequestBody(mediaType))
             }
             builder.build()
         } else {
@@ -380,7 +384,8 @@ class StudioViewModel(
         val apiKey = settingsRepository.photoVideoApiKey.first()
         val model = settingsRepository.photoVideoModel.first()
         val format = settingsRepository.photoVideoFormat.first()
-        val imageFormatSetting = settingsRepository.photoVideoImageFormat.first()
+        val imageFormatRaw = settingsRepository.photoVideoImageFormat.first()
+        val imageFormatSetting = if (imageFormatRaw == "url") "multipart" else imageFormatRaw
         val duration = settingsRepository.photoVideoDuration.first()
         val economyMode = settingsRepository.economyMode.first()
         val actualDuration = if (economyMode) "5" else duration
@@ -407,7 +412,8 @@ class StudioViewModel(
             } else {
                 val tempFile = getFileFromUri(imageUri, economyMode)
                 if (tempFile != null) {
-                    builder.addFormDataPart("image", "image.png", tempFile.asRequestBody("image/png".toMediaType()))
+                    val mediaType = if (economyMode) "image/jpeg".toMediaType() else "image/*".toMediaType()
+                    builder.addFormDataPart("image", "image.jpg", tempFile.asRequestBody(mediaType))
                 }
             }
             builder.build()
@@ -461,6 +467,7 @@ class StudioViewModel(
                 val reqId = extractRequestId(body)
                 val statusEndpoint = settingsRepository.photoVideoStatusEndpoint.first().removePrefix("/")
                 if (reqId != null && statusEndpoint.isNotBlank()) {
+                    _uiState.update { it.copy(videoStatus = "Starting video generation...") }
                     pollVideoStatus(reqId, apiKey, baseUrl, statusEndpoint)
                 } else {
                     _uiState.update { it.copy(isGenerating = false, error = "Failed to extract Video URL or Request ID from response.") }
@@ -483,22 +490,26 @@ class StudioViewModel(
     }
     
     private suspend fun pollVideoStatus(reqId: String, apiKey: String, baseUrl: String, statusEndpoint: String) {
-        var pollingUrl = "$baseUrl/$statusEndpoint"
+        val decodedEndpoint = java.net.URLDecoder.decode(statusEndpoint, "UTF-8").removePrefix("/")
+        var pollingUrl = "$baseUrl/$decodedEndpoint"
             .replace("{id}", reqId)
             .replace("{request_id}", reqId)
             .replace("{task_id}", reqId)
             
-        if (!statusEndpoint.contains("{") && !pollingUrl.endsWith("/$reqId")) {
-            pollingUrl = "$pollingUrl/$reqId"
+        if (!decodedEndpoint.contains("{") && !pollingUrl.endsWith("/$reqId")) {
+            val sep = if (pollingUrl.endsWith("/")) "" else "/"
+            pollingUrl = "$pollingUrl$sep$reqId"
         }
         
-        _uiState.update { it.copy(videoStatus = "Processing...") }
+        _uiState.update { it.copy(videoStatus = "Checking video status...") }
         
-        val maxAttempts = 30
+        val maxAttempts = 60
         var attempts = 0
         while (attempts < maxAttempts) {
             delay(5000)
             attempts++
+            
+            _uiState.update { it.copy(videoStatus = "Processing video... (Attempt $attempts)") }
             
             try {
                 val request = Request.Builder()
@@ -544,17 +555,20 @@ class StudioViewModel(
                 // ignore and retry
             }
         }
-        _uiState.update { it.copy(isGenerating = false, error = "Polling timeout.", videoStatus = null) }
+        _uiState.update { it.copy(isGenerating = false, error = "Video is still processing. Please try again or increase polling timeout.", videoStatus = null) }
     }
     
     private suspend fun fetchVideoResult(reqId: String, apiKey: String, baseUrl: String, resultEndpoint: String) {
-        var resUrl = "$baseUrl/$resultEndpoint"
+        _uiState.update { it.copy(videoStatus = "Finalizing video...") }
+        val decodedEndpoint = java.net.URLDecoder.decode(resultEndpoint, "UTF-8").removePrefix("/")
+        var resUrl = "$baseUrl/$decodedEndpoint"
             .replace("{id}", reqId)
             .replace("{request_id}", reqId)
             .replace("{task_id}", reqId)
             
-        if (!resultEndpoint.contains("{") && !resUrl.endsWith("/$reqId")) {
-            resUrl = "$resUrl/$reqId"
+        if (!decodedEndpoint.contains("{") && !resUrl.endsWith("/$reqId")) {
+            val sep = if (resUrl.endsWith("/")) "" else "/"
+            resUrl = "$resUrl$sep$reqId"
         }
         
         try {
@@ -609,17 +623,37 @@ class StudioViewModel(
     private fun extractVideoUrl(jsonStr: String): String? {
         return try {
             val obj = JSONObject(jsonStr)
-            // Luma structure roughly: { "state": "completed", "assets": {"video": "url"} }
-            if (obj.has("assets")) {
+            if (obj.has("assets") && !obj.isNull("assets")) {
                 val assets = obj.getJSONObject("assets")
                 if (assets.has("video")) return assets.getString("video")
             }
-            // Runway structure roughly: { "taskTitle": "...", "output": ["url"] }
-            if (obj.has("output") && obj.optJSONArray("output") != null) {
-                return obj.getJSONArray("output").getString(0)
+            if (obj.has("output") && !obj.isNull("output")) {
+                val out = obj.get("output")
+                if (out is org.json.JSONArray && out.length() > 0) return out.getString(0)
+                if (out is String) return out
             }
-            if (obj.has("video_url")) return obj.getString("video_url")
+            if (obj.has("video_url") && !obj.isNull("video_url")) return obj.getString("video_url")
+            if (obj.has("url") && !obj.isNull("url")) return obj.getString("url")
             
+            if (obj.has("data") && !obj.isNull("data")) {
+                val data = obj.getJSONArray("data")
+                if (data.length() > 0) {
+                    val first = data.getJSONObject(0)
+                    if (first.has("url")) return first.getString("url")
+                }
+            }
+
+            if (obj.has("result") && !obj.isNull("result")) {
+                val res = obj.getJSONObject("result")
+                if (res.has("video_url")) return res.getString("video_url")
+                if (res.has("url")) return res.getString("url")
+            }
+
+            if (obj.has("response") && !obj.isNull("response")) {
+                val resp = obj.getJSONObject("response")
+                if (resp.has("video_url")) return resp.getString("video_url")
+            }
+
             val url = extractMediaUrl(jsonStr)
             if (url != null && url.endsWith(".mp4")) return url
             
@@ -644,9 +678,15 @@ class StudioViewModel(
     private fun extractStatus(jsonStr: String): String? {
         return try {
             val obj = JSONObject(jsonStr)
-            if (obj.has("state")) return obj.getString("state").lowercase()
-            if (obj.has("status")) return obj.getString("status").lowercase()
-            null
+            val st = if (obj.has("state")) obj.getString("state").lowercase()
+            else if (obj.has("status")) obj.getString("status").lowercase()
+            else null
+
+            when (st) {
+                "completed", "complete", "success", "succeeded", "done", "finished" -> "completed"
+                "failed", "error", "cancelled", "canceled" -> "failed"
+                else -> st
+            }
         } catch (e: Exception) {
             null
         }

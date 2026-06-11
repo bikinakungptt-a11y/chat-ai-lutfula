@@ -48,9 +48,11 @@ fun StudioScreen(
     var showVideoConfirmation by remember { mutableStateOf(false) }
     
     val galleryLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+        contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
-        viewModel.selectImage(uri)
+        if (uri != null) {
+            viewModel.selectImage(uri)
+        }
     }
 
     val cameraLauncher = rememberLauncherForActivityResult(
@@ -66,7 +68,11 @@ fun StudioScreen(
     ) { perms ->
         val granted = perms.values.all { it }
         if (granted) {
-            galleryLauncher.launch("image/*")
+            galleryLauncher.launch(
+                androidx.activity.result.PickVisualMediaRequest(
+                    androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly
+                )
+            )
         } else {
             // handle denied
             android.widget.Toast.makeText(context, "Photo permission denied. You can enable it in App Settings.", android.widget.Toast.LENGTH_LONG).show()
@@ -296,7 +302,11 @@ fun StudioScreen(
                 ) {
                     Button(
                         onClick = {
-                            galleryLauncher.launch("image/*")
+                            galleryLauncher.launch(
+                                androidx.activity.result.PickVisualMediaRequest(
+                                    androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly
+                                )
+                            )
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                         shape = RoundedCornerShape(16.dp),
