@@ -204,6 +204,7 @@ fun SettingsScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 singleLine = true,
                 colors = OutlinedTextFieldDefaults.colors(
+                    cursorColor = Color.White,
                     focusedBorderColor = PrimaryNeon,
                     unfocusedBorderColor = OutlineDark,
                     focusedTextColor = Color.White,
@@ -223,6 +224,7 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 colors = OutlinedTextFieldDefaults.colors(
+                    cursorColor = Color.White,
                     focusedBorderColor = PrimaryNeon,
                     unfocusedBorderColor = OutlineDark,
                     focusedTextColor = Color.White,
@@ -250,6 +252,7 @@ fun SettingsScreen(
                     }
                 },
                 colors = OutlinedTextFieldDefaults.colors(
+                    cursorColor = Color.White,
                     focusedBorderColor = PrimaryNeon,
                     unfocusedBorderColor = OutlineDark,
                     focusedTextColor = Color.White,
@@ -269,6 +272,7 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 colors = OutlinedTextFieldDefaults.colors(
+                    cursorColor = Color.White,
                     focusedBorderColor = PrimaryNeon,
                     unfocusedBorderColor = OutlineDark,
                     focusedTextColor = Color.White,
@@ -289,6 +293,7 @@ fun SettingsScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 singleLine = true,
                 colors = OutlinedTextFieldDefaults.colors(
+                    cursorColor = Color.White,
                     focusedBorderColor = PrimaryNeon,
                     unfocusedBorderColor = OutlineDark,
                     focusedTextColor = Color.White,
@@ -545,7 +550,8 @@ fun MediaSettingsCard(
             // BaseModel
             OutlinedTextField(
                 value = baseUrl, onValueChange = onBaseUrlChange, label = { Text("Base URL") },
-                modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp)
+                modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(cursorColor = Color.White)
             )
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -553,6 +559,7 @@ fun MediaSettingsCard(
             OutlinedTextField(
                 value = apiKey, onValueChange = onApiKeyChange, label = { Text("API Key") },
                 modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(cursorColor = Color.White),
                 visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                 trailingIcon = {
                     val image = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
@@ -566,14 +573,16 @@ fun MediaSettingsCard(
             // Endpoints
             OutlinedTextField(
                 value = endpoint, onValueChange = onEndpointChange, label = { Text("Endpoint Path") },
-                modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp)
+                modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(cursorColor = Color.White)
             )
             Spacer(modifier = Modifier.height(8.dp))
             
             if (statusEndpoint != null && onStatusEndpointChange != null) {
                 OutlinedTextField(
                     value = statusEndpoint, onValueChange = onStatusEndpointChange, label = { Text("Status Endpoint Path") },
-                    modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp)
+                    modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(cursorColor = Color.White)
                 )
                 Spacer(modifier = Modifier.height(8.dp))
             }
@@ -581,7 +590,8 @@ fun MediaSettingsCard(
             if (resultEndpoint != null && onResultEndpointChange != null) {
                 OutlinedTextField(
                     value = resultEndpoint, onValueChange = onResultEndpointChange, label = { Text("Result Endpoint Path") },
-                    modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp)
+                    modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(cursorColor = Color.White)
                 )
                 Spacer(modifier = Modifier.height(8.dp))
             }
@@ -589,7 +599,8 @@ fun MediaSettingsCard(
             // Model
             OutlinedTextField(
                 value = model, onValueChange = onModelChange, label = { Text("Model Name") },
-                modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp)
+                modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(cursorColor = Color.White)
             )
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -630,7 +641,8 @@ fun MediaSettingsCard(
                 OutlinedTextField(
                     value = duration, onValueChange = onDurationChange, label = { Text("Duration (seconds)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp)
+                    modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(cursorColor = Color.White)
                 )
                 Spacer(modifier = Modifier.height(8.dp))
             }

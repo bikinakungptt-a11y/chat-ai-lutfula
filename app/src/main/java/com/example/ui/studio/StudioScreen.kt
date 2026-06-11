@@ -27,6 +27,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.example.ui.theme.OutlineDark
 import com.example.ui.theme.OutlineGlow
@@ -229,15 +233,18 @@ fun StudioScreen(
             ) {
                 if (uiState.isGenerating) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(color = PrimaryNeon)
-                        Spacer(modifier = Modifier.height(16.dp))
-                        val loadingText = uiState.videoStatus ?: when (uiState.selectedTab) {
-                            0 -> "Generating photo..."
-                            1 -> "Editing photo..."
-                            2 -> "Generating video..."
-                            else -> "Generating content..."
+                        if (uiState.selectedTab == 2) {
+                            Text("Ai Chat Generating video...", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            CircularProgressIndicator(color = PrimaryNeon)
+                            Spacer(modifier = Modifier.height(16.dp))
+                            val loadingText = uiState.videoStatus ?: when (uiState.selectedTab) {
+                                0 -> "Generating photo..."
+                                1 -> "Editing photo..."
+                                else -> "Generating content..."
+                            }
+                            Text(loadingText, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Text(loadingText, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 } else if (!uiState.error.isNullOrEmpty()) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(16.dp)) {
@@ -272,13 +279,42 @@ fun StudioScreen(
                         )
                     }
                 } else if (uiState.generatedVideoUrl != null && uiState.selectedTab == 2) {
-                    // Simulating a video player placeholder
+                    var isError by remember(uiState.generatedVideoUrl) { mutableStateOf(false) }
+                    val exoPlayer = remember(uiState.generatedVideoUrl) {
+                        ExoPlayer.Builder(context).build().apply {
+                            setMediaItem(MediaItem.fromUri(uiState.generatedVideoUrl!!))
+                            prepare()
+                            addListener(object : androidx.media3.common.Player.Listener {
+                                override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                                    isError = true
+                                }
+                            })
+                        }
+                    }
+
+                    DisposableEffect(uiState.generatedVideoUrl) {
+                        onDispose {
+                            exoPlayer.release()
+                        }
+                    }
+                    
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Filled.Movie, contentDescription = null, modifier = Modifier.size(64.dp), tint = PrimaryNeon)
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text("Video generated successfully.\n(Preview unavailable in current implementation)", color = Color.White, textAlign = TextAlign.Center)
-                            Text(uiState.generatedVideoUrl!!, color = PrimaryBlue, fontSize = 10.sp, textAlign = TextAlign.Center)
+                        if (isError) {
+                             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(16.dp)) {
+                                  Icon(Icons.Filled.BrokenImage, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.error)
+                                  Spacer(modifier = Modifier.height(16.dp))
+                                  Text("Video preview failed. You can still save the video.", color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
+                             }
+                        } else {
+                            AndroidView(
+                                factory = {
+                                    PlayerView(it).apply {
+                                        player = exoPlayer
+                                        useController = true
+                                    }
+                                },
+                                modifier = Modifier.fillMaxSize()
+                            )
                         }
                         IconButton(
                             onClick = {
@@ -389,6 +425,7 @@ fun StudioScreen(
                     .heightIn(min = 56.dp, max = 120.dp),
                 shape = RoundedCornerShape(24.dp),
                 colors = OutlinedTextFieldDefaults.colors(
+                    cursorColor = Color.White,
                     focusedBorderColor = PrimaryNeon,
                     unfocusedBorderColor = OutlineDark,
                     focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),

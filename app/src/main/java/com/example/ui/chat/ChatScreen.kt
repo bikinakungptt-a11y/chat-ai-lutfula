@@ -351,6 +351,7 @@ fun ChatScreen(
                             onValueChange = { inputText = it },
                             modifier = Modifier.weight(1f),
                             textStyle = TextStyle(color = Color.White, fontSize = 16.sp),
+                            cursorBrush = SolidColor(Color.White),
                             decorationBox = { innerTextField ->
                                 if (inputText.isEmpty()) {
                                     Text("Ask anything...", color = MaterialTheme.colorScheme.onSurfaceVariant)

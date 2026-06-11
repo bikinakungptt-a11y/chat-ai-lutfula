@@ -89,6 +89,7 @@ fun OutlookScreen(
                 singleLine = true,
                 shape = RoundedCornerShape(24.dp),
                 colors = OutlinedTextFieldDefaults.colors(
+                    cursorColor = Color.White,
                     focusedBorderColor = PrimaryBlue,
                     unfocusedBorderColor = OutlineDark,
                     focusedTextColor = Color.White,
