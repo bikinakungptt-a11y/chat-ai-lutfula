@@ -32,18 +32,19 @@ jobs:
           python3 -c "import base64; open('debug.keystore', 'wb').write(base64.b64decode(open('debug.keystore.base64', 'r').read()))"
         fi
 
-    - name: Create environment file
+    - name: Create environment files
       run: |
         cat > .env <<EOF
         GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY || 'MY_GEMINI_API_KEY' }}
         MICROSOFT_CLIENT_ID=${{ vars.MICROSOFT_CLIENT_ID || 'YOUR_MICROSOFT_CLIENT_ID' }}
         MICROSOFT_SIGNATURE_HASH=${{ vars.MICROSOFT_SIGNATURE_HASH || 'YOUR_BASE64_SIGNATURE_HASH' }}
         APPWRITE_MEMORY_ENABLED=${{ vars.APPWRITE_MEMORY_ENABLED || 'true' }}
-        APPWRITE_ENDPOINT=${{ vars.APPWRITE_ENDPOINT || 'https://cloud.appwrite.io/v1' }}
+        APPWRITE_ENDPOINT=${{ vars.APPWRITE_ENDPOINT || 'https://syd.cloud.appwrite.io/v1' }}
         APPWRITE_PROJECT_ID=${{ vars.APPWRITE_PROJECT_ID || 'YOUR_APPWRITE_PROJECT_ID' }}
         APPWRITE_DATABASE_ID=${{ vars.APPWRITE_DATABASE_ID || 'ai_chat_db' }}
         APPWRITE_MEMORY_COLLECTION_ID=${{ vars.APPWRITE_MEMORY_COLLECTION_ID || 'memories' }}
         EOF
+        cp .env app/.env
 
     - name: Generate Gradle Wrapper
       run: gradle wrapper --gradle-version 9.3.1
