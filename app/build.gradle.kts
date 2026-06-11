@@ -23,6 +23,17 @@ android {
     val signatureHashFallback = "EfKLa/C+05Hz/xBbYz1eP6zecJ0="
     val signatureHash = project.findProperty("MICROSOFT_SIGNATURE_HASH")?.toString()?.takeIf { it.isNotBlank() && it != "YOUR_BASE64_SIGNATURE_HASH" } ?: signatureHashFallback
     manifestPlaceholders["msalSignatureHash"] = signatureHash
+
+    fun configString(name: String, fallback: String = ""): String {
+      val value = project.findProperty(name)?.toString()?.takeIf { it.isNotBlank() } ?: fallback
+      return "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
+    }
+
+    buildConfigField("String", "APPWRITE_MEMORY_ENABLED", configString("APPWRITE_MEMORY_ENABLED", "false"))
+    buildConfigField("String", "APPWRITE_ENDPOINT", configString("APPWRITE_ENDPOINT", "https://cloud.appwrite.io/v1"))
+    buildConfigField("String", "APPWRITE_PROJECT_ID", configString("APPWRITE_PROJECT_ID", ""))
+    buildConfigField("String", "APPWRITE_DATABASE_ID", configString("APPWRITE_DATABASE_ID", ""))
+    buildConfigField("String", "APPWRITE_MEMORY_COLLECTION_ID", configString("APPWRITE_MEMORY_COLLECTION_ID", "memories"))
   }
 
   signingConfigs {
