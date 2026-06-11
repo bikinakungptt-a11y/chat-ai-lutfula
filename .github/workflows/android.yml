@@ -24,7 +24,12 @@ jobs:
       run: chmod +x gradlew
 
     - name: Decode Keystore
-      run: python3 -c "import base64; open('debug.keystore', 'wb').write(base64.b64decode(open('debug.keystore.base64', 'r').read()))"
+      run: |
+        if [ ! -f debug.keystore.base64 ]; then
+          keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+        else
+          python3 -c "import base64; open('debug.keystore', 'wb').write(base64.b64decode(open('debug.keystore.base64', 'r').read()))"
+        fi
 
     - name: Generate Gradle Wrapper
       run: gradle wrapper --gradle-version 9.3.1
