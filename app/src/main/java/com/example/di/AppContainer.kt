@@ -17,6 +17,7 @@ object AppContainer {
     private var _database: AppDatabase? = null
     private var _chatRepository: ChatRepository? = null
     private var _memoryRepository: com.example.data.MemoryRepository? = null
+    private var _appwriteMemoryRepository: com.example.data.AppwriteMemoryRepository? = null
     private var _microsoftAuthService: MicrosoftAuthService? = null
     private var _microsoftGraphRepository: MicrosoftGraphRepository? = null
 
@@ -60,9 +61,22 @@ object AppContainer {
         return _chatRepository!!
     }
 
+    fun getAppwriteMemoryRepository(context: Context): com.example.data.AppwriteMemoryRepository {
+        if (_appwriteMemoryRepository == null) {
+            _appwriteMemoryRepository = com.example.data.AppwriteMemoryRepository(
+                getSettingsRepository(context),
+                okHttpClient
+            )
+        }
+        return _appwriteMemoryRepository!!
+    }
+
     fun getMemoryRepository(context: Context): com.example.data.MemoryRepository {
         if (_memoryRepository == null) {
-            _memoryRepository = com.example.data.MemoryRepository(getDatabase(context).memoryDao())
+            _memoryRepository = com.example.data.MemoryRepository(
+                getDatabase(context).memoryDao(),
+                getAppwriteMemoryRepository(context)
+            )
         }
         return _memoryRepository!!
     }
