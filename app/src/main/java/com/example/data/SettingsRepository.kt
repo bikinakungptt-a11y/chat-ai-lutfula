@@ -13,15 +13,15 @@ import kotlinx.coroutines.flow.map
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
 class SettingsRepository(private val context: Context) {
-    private val API_KEY = stringPreferencesKey("api_key")
     private val BASE_URL = stringPreferencesKey("base_url")
     private val TEXT_PATH = stringPreferencesKey("text_path")
     private val MODEL = stringPreferencesKey("model")
-    private val FIRECRAWL_API_KEY = stringPreferencesKey("firecrawl_api_key")
+    private val SAVED_MODELS = stringPreferencesKey("saved_models")
     private val TEXT_PROVIDER = stringPreferencesKey("text_provider")
     private val ASSISTANT_LANGUAGE_PREFERENCE = stringPreferencesKey("assistantLanguagePreference")
 
     // Media Generation Settings
+
     // Create Photo
     private val CREATE_PHOTO_PROVIDER = stringPreferencesKey("create_photo_provider")
     private val CREATE_PHOTO_API_KEY = stringPreferencesKey("create_photo_api_key")
@@ -55,11 +55,36 @@ class SettingsRepository(private val context: Context) {
     private val MEMORY_ENABLED = booleanPreferencesKey("memory_enabled")
 
     val textProvider: Flow<String> = context.dataStore.data.map { it[TEXT_PROVIDER] ?: "" }
-    val apiKey: Flow<String> = context.dataStore.data.map { it[API_KEY] ?: "" }
+    
+    val apiKey: kotlinx.coroutines.flow.MutableStateFlow<String> = kotlinx.coroutines.flow.MutableStateFlow("")
+    fun setApiKey(key: String) {
+        apiKey.value = key
+    }
+
     val baseUrl: Flow<String> = context.dataStore.data.map { it[BASE_URL] ?: "" }
     val textPath: Flow<String> = context.dataStore.data.map { it[TEXT_PATH] ?: "/chat/completions" }
     val model: Flow<String> = context.dataStore.data.map { it[MODEL] ?: "" }
-    val firecrawlApiKey: Flow<String> = context.dataStore.data.map { it[FIRECRAWL_API_KEY] ?: "" }
+    
+    val savedModelsList: Flow<List<String>> = context.dataStore.data.map { prefs ->
+        prefs[SAVED_MODELS]?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+    }
+    
+    suspend fun addSavedModel(modelName: String) {
+        if (modelName.isBlank()) return
+        context.dataStore.edit { prefs ->
+            val current = prefs[SAVED_MODELS]?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+            if (!current.contains(modelName)) {
+                prefs[SAVED_MODELS] = (listOf(modelName) + current).joinToString(",")
+            }
+        }
+    }
+    
+    suspend fun removeSavedModel(modelName: String) {
+        context.dataStore.edit { prefs ->
+            val current = prefs[SAVED_MODELS]?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+            prefs[SAVED_MODELS] = current.filter { it != modelName }.joinToString(",")
+        }
+    }
 
     val createPhotoProvider: Flow<String> = context.dataStore.data.map { it[CREATE_PHOTO_PROVIDER] ?: "" }
     val createPhotoApiKey: Flow<String> = context.dataStore.data.map { it[CREATE_PHOTO_API_KEY] ?: "" }
@@ -92,14 +117,13 @@ class SettingsRepository(private val context: Context) {
 
     val assistantLanguagePreference: Flow<String> = context.dataStore.data.map { it[ASSISTANT_LANGUAGE_PREFERENCE] ?: "id" }
 
-    suspend fun saveSettings(provider: String, key: String, url: String, path: String, modelName: String, firecrawlKey: String) {
+    suspend fun saveSettings(provider: String, key: String, url: String, path: String, modelName: String) {
+        setApiKey(key)
         context.dataStore.edit { prefs ->
             prefs[TEXT_PROVIDER] = provider
-            prefs[API_KEY] = key
             prefs[BASE_URL] = url
             prefs[TEXT_PATH] = path
             prefs[MODEL] = modelName
-            prefs[FIRECRAWL_API_KEY] = firecrawlKey
         }
     }
 

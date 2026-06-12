@@ -45,6 +45,7 @@ data class ChatUiState(
     val sessions: List<ChatSessionEntity> = emptyList(),
     val currentSessionId: Long? = null,
     val isLoading: Boolean = false,
+    val loadingText: String? = null,
     val error: String? = null,
     val mode: ChatMode = ChatMode.NORMAL,
     val emailContext: String? = null,
@@ -243,6 +244,7 @@ class ChatViewModel(
         _uiState.update { 
             it.copy(
                 isLoading = true,
+                loadingText = null,
                 error = null
             )
         }
@@ -270,7 +272,7 @@ class ChatViewModel(
                 val baseUrl = settingsRepository.baseUrl.first()
                 val path = settingsRepository.textPath.first()
                 val modelName = settingsRepository.model.first()
-                val firecrawlKey = settingsRepository.firecrawlApiKey.first()
+                val firecrawlKey = com.example.BuildConfig.FIRECRAWL_API_KEY
                 val langPref = settingsRepository.assistantLanguagePreference.first()
                 val memoryEnabled = settingsRepository.memoryEnabled.first()
 
@@ -291,8 +293,9 @@ class ChatViewModel(
                 val useSearch = shouldUseRealtimeSearch(messageText) && urlsInMessage.isEmpty()
                 
                 if (urlsInMessage.isNotEmpty()) {
-                    if (firecrawlKey.isBlank()) {
-                        chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "⚠️ Firecrawl API key is missing. Answering without live web scraping."))
+                    _uiState.update { it.copy(isLoading = true, loadingText = "Checking website...") }
+                    if (firecrawlKey.isBlank() || firecrawlKey == "\"YOUR_FIRECRAWL_API_KEY\"" || firecrawlKey == "YOUR_FIRECRAWL_API_KEY") {
+                        searchContext = "The user sent a link, but website reading is not configured. You MUST reply with exactly this text: 'Website reading is not configured yet. Please add Firecrawl API key in environment variables.'"
                     } else {
                         val scrapeUrl = urlsInMessage.first()
                         try {
@@ -316,19 +319,22 @@ class ChatViewModel(
                                 val markdown = fResult?.data?.markdown
                                 if (!markdown.isNullOrEmpty()) {
                                     val safeMarkdown = if (markdown.length > 10000) markdown.substring(0, 10000) + "...\n[Content Truncated]" else markdown
-                                    searchContext = "Use the following scraped web content to answer the user's query:\n\nUrl: $scrapeUrl\nContent:\n$safeMarkdown"
+                                    searchContext = "Use the following scraped web content to answer the user's query:\n\nUrl: $scrapeUrl\nContent:\n$safeMarkdown\n\nInstructions: Answer based on the website content. If the user asked a specific question, answer it. If the user only sent a link without a specific question, summarize what the website is, its main function, and important details. NEVER say you cannot open links or browse websites. You MUST use this extracted text to provide your answer."
+                                } else {
+                                    searchContext = "I tried to read $scrapeUrl but it returned empty content. Explain to the user it might require login, is blocked, or has no readable text."
                                 }
                             } else {
                                 val errCode = fResponse.code
-                                val errMsg = fResponseStr ?: "Unknown error"
-                                chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "⚠️ Website scrape failed (HTTP $errCode): $errMsg"))
+                                val errMsg = fResponseStr?.take(200) ?: "Unknown error"
+                                searchContext = "I tried to open $scrapeUrl, but it failed. Explain the real reason to the user clearly: HTTP $errCode - $errMsg"
                             }
                         } catch (e: Exception) {
-                            chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "⚠️ Website scrape failed: ${e.message}"))
+                            searchContext = "I tried to open $scrapeUrl, but Firecrawl returned an error. Explain the real reason to the user: ${e.message}"
                         }
                     }
+                    _uiState.update { it.copy(loadingText = null) }
                 } else if (useSearch) {
-                    if (firecrawlKey.isBlank()) {
+                    if (firecrawlKey.isBlank() || firecrawlKey == "\"YOUR_FIRECRAWL_API_KEY\"" || firecrawlKey == "YOUR_FIRECRAWL_API_KEY") {
                         chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "⚠️ Real-time search API key is missing. Answering without live search."))
                     } else {
                         try {

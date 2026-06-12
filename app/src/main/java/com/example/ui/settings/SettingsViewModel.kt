@@ -29,7 +29,7 @@ data class SettingsUiState(
     val apiKey: String = "",
     val textPath: String = "/chat/completions",
     val modelName: String = "",
-    val firecrawlApiKey: String = "",
+    val savedModelsList: List<String> = emptyList(),
     val isSaved: Boolean = false,
     val isTesting: Boolean = false,
     val testResult: String? = null,
@@ -105,6 +105,17 @@ class SettingsViewModel(
                 _uiState.update { it.copy(microsoftAccount = account) }
             }
         }
+        viewModelScope.launch {
+            settingsRepository.savedModelsList.collect { models ->
+                _uiState.update { it.copy(savedModelsList = models) }
+            }
+        }
+    }
+
+    fun removeSavedModel(model: String) {
+        viewModelScope.launch {
+            settingsRepository.removeSavedModel(model)
+        }
     }
 
     private fun loadSettings() {
@@ -122,7 +133,6 @@ class SettingsViewModel(
             val key = settingsRepository.apiKey.first()
             val path = settingsRepository.textPath.first()
             val model = settingsRepository.model.first()
-            val firecrawlKey = settingsRepository.firecrawlApiKey.first()
             
             _uiState.update {
                 it.copy(
@@ -131,7 +141,6 @@ class SettingsViewModel(
                     apiKey = key,
                     textPath = path.takeIf { p -> p.isNotEmpty() } ?: "/chat/completions",
                     modelName = model,
-                    firecrawlApiKey = firecrawlKey,
                     
                     createPhotoProvider = settingsRepository.createPhotoProvider.first(),
                     createPhotoApiKey = settingsRepository.createPhotoApiKey.first(),
@@ -170,7 +179,6 @@ class SettingsViewModel(
     fun updateApiKey(key: String) { _uiState.update { it.copy(apiKey = key, isSaved = false, validationError = null) } }
     fun updateTextPath(path: String) { _uiState.update { it.copy(textPath = path, isSaved = false, validationError = null) } }
     fun updateModelName(model: String) { _uiState.update { it.copy(modelName = model, isSaved = false, validationError = null) } }
-    fun updateFirecrawlApiKey(key: String) { _uiState.update { it.copy(firecrawlApiKey = key, isSaved = false) } }
 
     fun clearTestResult() {
         _uiState.update { it.copy(testResult = null, testError = null, validationError = null) }
@@ -209,7 +217,8 @@ class SettingsViewModel(
         if (!validateTextSettings()) return
         viewModelScope.launch {
             val state = _uiState.value
-            settingsRepository.saveSettings(state.textProvider, state.apiKey, state.baseUrl, state.textPath, state.modelName, state.firecrawlApiKey)
+            settingsRepository.saveSettings(state.textProvider, state.apiKey, state.baseUrl, state.textPath, state.modelName)
+            settingsRepository.addSavedModel(state.modelName)
             _uiState.update { it.copy(isSaved = true, validationError = null, testResult = null, testError = null) }
         }
     }

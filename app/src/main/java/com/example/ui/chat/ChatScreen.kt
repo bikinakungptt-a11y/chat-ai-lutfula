@@ -294,7 +294,7 @@ fun ChatScreen(
                     if (uiState.isLoading) {
                         item(key = "loading_indicator") {
                             Box(modifier = Modifier.animateItem()) {
-                                TypingBubble()
+                                TypingBubble(uiState.loadingText)
                             }
                         }
                     }
@@ -726,7 +726,7 @@ fun MessageContent(content: String, isUser: Boolean) {
 }
 
 @Composable
-fun TypingBubble() {
+fun TypingBubble(loadingText: String? = null) {
     val infiniteTransition = rememberInfiniteTransition(label = "dots")
     val dotCount by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -738,7 +738,7 @@ fun TypingBubble() {
         label = "dots"
     )
     val dots = ".".repeat(dotCount.toInt().coerceIn(0, 3))
-    val text = "Ai Chat typing$dots"
+    val text = if (loadingText != null) "$loadingText$dots" else "Ai Chat typing$dots"
     
     MessageBubble(message = UiMessage(role = "model", content = text))
 }

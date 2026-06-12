@@ -1,5 +1,5 @@
 {
-  "name": "AI Chat Mobile",
+  "name": "Ai Chat",
   "description": "An AI chat app where users can enter their own API key and use OpenAI-compatible chat APIs.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

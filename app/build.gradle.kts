@@ -14,6 +14,13 @@ android {
     applicationId = "com.aistudio.aichatmobile.xmqpr"
     minSdk = 26
     targetSdk = 36
+    // APK versioning for future upgrades:
+    // For every APK update, increase versionCode.
+    // Example:
+    // versionCode 1, versionName "1.0"
+    // versionCode 2, versionName "1.1"
+    // versionCode 3, versionName "1.2"
+    // versionCode 4, versionName "2.0"
     versionCode = 1
     versionName = "1.0"
 
