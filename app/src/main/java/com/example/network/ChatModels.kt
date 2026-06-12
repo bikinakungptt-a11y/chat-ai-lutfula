@@ -58,3 +58,26 @@ data class FirecrawlSearchResult(
     val title: String?,
     val description: String?
 )
+
+@JsonClass(generateAdapter = true)
+data class FirecrawlScrapeRequest(
+    val url: String
+)
+
+@JsonClass(generateAdapter = true)
+data class FirecrawlScrapeResponse(
+    val success: Boolean?,
+    val data: FirecrawlScrapeData?
+)
+
+@JsonClass(generateAdapter = true)
+data class FirecrawlScrapeData(
+    val markdown: String?,
+    val metadata: FirecrawlScrapeMetadata?
+)
+
+@JsonClass(generateAdapter = true)
+data class FirecrawlScrapeMetadata(
+    val title: String?,
+    val description: String?
+)

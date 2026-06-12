@@ -279,9 +279,47 @@ class ChatViewModel(
                 var searchContext = ""
                 var searchLinks = ""
                 
-                val useSearch = shouldUseRealtimeSearch(messageText)
+                val urlsInMessage = Regex("(https?://[\\w-]+(\\.[\\w-]+)+(/([\\w- ./?%&=]*)?)?)").findAll(messageText).map { it.value }.toList()
+                val useSearch = shouldUseRealtimeSearch(messageText) && urlsInMessage.isEmpty()
                 
-                if (useSearch) {
+                if (urlsInMessage.isNotEmpty()) {
+                    if (firecrawlKey.isBlank()) {
+                        chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "⚠️ Firecrawl API key is missing. Answering without live web scraping."))
+                    } else {
+                        val scrapeUrl = urlsInMessage.first()
+                        try {
+                            val scrapeAdapter = moshi.adapter(com.example.network.FirecrawlScrapeRequest::class.java)
+                            val fRequestBody = scrapeAdapter.toJson(com.example.network.FirecrawlScrapeRequest(url = scrapeUrl)).toRequestBody("application/json; charset=utf-8".toMediaType())
+                            
+                            val fRequest = Request.Builder()
+                                .url("https://api.firecrawl.dev/v1/scrape")
+                                .addHeader("Authorization", "Bearer $firecrawlKey")
+                                .addHeader("Content-Type", "application/json")
+                                .post(fRequestBody)
+                                .build()
+                                
+                            val fResponse = okHttpClient.newCall(fRequest).execute()
+                            val fResponseStr = fResponse.body?.string()
+                            
+                            if (fResponse.isSuccessful && fResponseStr != null) {
+                                val fResponseAdapter = moshi.adapter(com.example.network.FirecrawlScrapeResponse::class.java)
+                                val fResult = fResponseAdapter.fromJson(fResponseStr)
+                                
+                                val markdown = fResult?.data?.markdown
+                                if (!markdown.isNullOrEmpty()) {
+                                    val safeMarkdown = if (markdown.length > 10000) markdown.substring(0, 10000) + "...\n[Content Truncated]" else markdown
+                                    searchContext = "Use the following scraped web content to answer the user's query:\n\nUrl: $scrapeUrl\nContent:\n$safeMarkdown"
+                                }
+                            } else {
+                                val errCode = fResponse.code
+                                val errMsg = fResponseStr ?: "Unknown error"
+                                chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "⚠️ Website scrape failed (HTTP $errCode): $errMsg"))
+                            }
+                        } catch (e: Exception) {
+                            chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "⚠️ Website scrape failed: ${e.message}"))
+                        }
+                    }
+                } else if (useSearch) {
                     if (firecrawlKey.isBlank()) {
                         chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "⚠️ Real-time search API key is missing. Answering without live search."))
                     } else {
@@ -313,10 +351,12 @@ class ChatViewModel(
                                     searchLinks = "\n\nSources:\n" + topResults.joinToString("\n") { "• ${it.title ?: "Link"}\n  ${it.url}" }
                                 }
                             } else {
-                                chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "⚠️ Real-time search failed, answering without live search."))
+                                val errCode = fResponse.code
+                                val errMsg = fResponseStr ?: "Unknown error"
+                                chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "⚠️ Real-time search failed (HTTP $errCode): $errMsg"))
                             }
                         } catch (e: Exception) {
-                            chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "⚠️ Real-time search failed, answering without live search."))
+                            chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "⚠️ Real-time search failed: ${e.message}"))
                         }
                     }
                 }
