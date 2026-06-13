@@ -123,6 +123,7 @@ fun AppNavigation() {
                 com.example.ui.outlook.OutlookScreen(
                     viewModel = outlookViewModel,
                     onNavigateBack = { navController.popBackStack() },
+                    onNavigateToSettings = { navController.navigate(Screen.Settings.route) },
                     onAskAi = { email ->
                         val sender = email.sender?.emailAddress?.name ?: email.sender?.emailAddress?.address ?: "Unknown Sender"
                         val subject = email.subject ?: "(No Subject)"
