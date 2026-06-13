@@ -31,7 +31,8 @@ android {
     // Fallback if not configured in .env
     val signatureHashFallback = "EfKLa/C+05Hz/xBbYz1eP6zecJ0="
     val rawSignatureHash = project.findProperty("MICROSOFT_SIGNATURE_HASH")?.toString()?.takeIf { it.isNotBlank() && it != "YOUR_BASE64_SIGNATURE_HASH" } ?: signatureHashFallback
-    manifestPlaceholders["msalSignatureHash"] = rawSignatureHash
+    val encodedSignatureHash = URLEncoder.encode(rawSignatureHash, "UTF-8")
+    manifestPlaceholders["msalSignatureHash"] = encodedSignatureHash
   }
 
   signingConfigs {
