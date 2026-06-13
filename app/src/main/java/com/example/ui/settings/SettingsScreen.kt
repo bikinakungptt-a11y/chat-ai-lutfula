@@ -162,16 +162,97 @@ fun SettingsScreen(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
+                    OutlinedTextField(
+                        value = uiState.microsoftClientId,
+                        onValueChange = { viewModel.updateMicrosoftClientId(it) },
+                        label = { Text("Microsoft Client ID") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            cursorColor = Color.White,
+                            focusedBorderColor = PrimaryNeon,
+                            unfocusedBorderColor = OutlineDark,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = uiState.microsoftTenant,
+                        onValueChange = { viewModel.updateMicrosoftTenant(it) },
+                        label = { Text("Microsoft Tenant (default: common)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            cursorColor = Color.White,
+                            focusedBorderColor = PrimaryNeon,
+                            unfocusedBorderColor = OutlineDark,
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        onClick = { viewModel.saveMicrosoftConfig() },
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Save Configuration", color = Color.White)
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "To connect Outlook, create an Azure App Registration, set Supported account types to 'Accounts in any organizational directory and personal Microsoft accounts', and add the following redirect URI in Authentication > Mobile and desktop applications:",
+                        fontSize = 12.sp,
+                        color = Color.Gray
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "msauth://com.aistudio.aichatmobile.xmqpr/EfKLa%2FC%2B05Hz%2FxBbYz1eP6zecJ0%3D",
+                        fontSize = 12.sp,
+                        color = PrimaryNeon,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.background(OutlineDark.copy(alpha=0.3f), RoundedCornerShape(4.dp)).padding(4.dp)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Divider(color = OutlineDark)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
                     val account = uiState.microsoftAccount
                     if (account != null) {
                         Text("Connected Account", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(account.username ?: "Unknown", fontSize = 16.sp, color = Color.White, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(12.dp))
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            OutlinedButton(
+                                onClick = { viewModel.testMicrosoftProfile() },
+                                modifier = Modifier.weight(1f).padding(end = 8.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, OutlineDark),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                            ) {
+                                Text("Test Profile", color = Color.White)
+                            }
+                            OutlinedButton(
+                                onClick = { viewModel.testMicrosoftInbox() },
+                                modifier = Modifier.weight(1f).padding(start = 8.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, OutlineDark),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                            ) {
+                                Text("Check Inbox", color = Color.White)
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
                         Button(
                             onClick = { viewModel.signOutMicrosoft() },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(alpha = 0.8f))
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(alpha = 0.8f)),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Disconnect", color = Color.White)
+                            Text("Disconnect Outlook", color = Color.White)
                         }
                     } else {
                         Text("No Microsoft Account Connected", fontSize = 14.sp, color = Color.LightGray)
@@ -183,9 +264,10 @@ fun SettingsScreen(
                                     viewModel.signInMicrosoft(activity)
                                 }
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue)
+                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Connect Outlook / Hotmail", color = Color.White)
+                            Text("Connect Outlook", color = Color.White)
                         }
                     }
                 }

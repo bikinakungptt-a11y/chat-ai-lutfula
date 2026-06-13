@@ -15,13 +15,20 @@ import kotlin.coroutines.resume
 
 class MicrosoftAuthService(private val context: Context) {
     private var msalApp: IMultipleAccountPublicClientApplication? = null
+    private val localStorage = LocalStorage(context)
 
     private val _account = MutableStateFlow<IAccount?>(null)
     val account: StateFlow<IAccount?> = _account.asStateFlow()
 
-    private val scopes = arrayOf("User.Read", "Mail.ReadBasic", "Mail.Read")
+    private val scopes = arrayOf("User.Read", "Mail.ReadBasic", "Mail.Read", "offline_access")
 
     init {
+        initializeMsal()
+    }
+
+    fun reinitializeMsal() {
+        _account.value = null
+        msalApp = null
         initializeMsal()
     }
 
@@ -45,11 +52,17 @@ class MicrosoftAuthService(private val context: Context) {
 
     private fun initializeMsal() {
         try {
-            var clientId = BuildConfig.MICROSOFT_CLIENT_ID
+            var clientId = localStorage.getMicrosoftClientId()
+            
             if (clientId.isBlank() || clientId == "YOUR_MICROSOFT_CLIENT_ID") {
-                clientId = "YOUR_MICROSOFT_CLIENT_ID" // Placeholder, expect user to provide
+                clientId = BuildConfig.MICROSOFT_CLIENT_ID
+                if (clientId.isBlank() || clientId == "YOUR_MICROSOFT_CLIENT_ID") {
+                    clientId = "YOUR_MICROSOFT_CLIENT_ID" // Placeholder, expect user to provide
+                }
             }
             
+            val tenantId = localStorage.getMicrosoftTenant()
+
             val signatureHash = getSignatureHash()
             val encodedHash = java.net.URLEncoder.encode(signatureHash, "UTF-8")
 
@@ -65,7 +78,7 @@ class MicrosoftAuthService(private val context: Context) {
                   "type": "AAD",
                   "audience": {
                     "type": "AzureADandPersonalMicrosoftAccount",
-                    "tenant_id": "common"
+                    "tenant_id": "$tenantId"
                   }
                 }
               ]

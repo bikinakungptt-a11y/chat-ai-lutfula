@@ -38,6 +38,8 @@ data class SettingsUiState(
     val requireValidation: Boolean = false,
     val validationError: String? = null,
     val microsoftAccount: IAccount? = null,
+    val microsoftClientId: String = "",
+    val microsoftTenant: String = "common",
     
     val firecrawlApiKey: String = "",
 
@@ -94,8 +96,10 @@ data class SettingsUiState(
 class SettingsViewModel(
     private val settingsRepository: SettingsRepository,
     private val microsoftAuthService: MicrosoftAuthService,
+    private val microsoftGraphRepository: com.example.data.MicrosoftGraphRepository,
     private val okHttpClient: OkHttpClient,
-    private val moshi: Moshi
+    private val moshi: Moshi,
+    private val localStorage: com.example.data.LocalStorage
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -104,6 +108,12 @@ class SettingsViewModel(
     private val MASKED_KEY_PLACEHOLDER = "••••••••••••••••"
 
     init {
+        _uiState.update { 
+            it.copy(
+                microsoftClientId = localStorage.getMicrosoftClientId(),
+                microsoftTenant = localStorage.getMicrosoftTenant()
+            )
+        }
         loadSettings()
         viewModelScope.launch {
             microsoftAuthService.account.collect { account ->
@@ -188,6 +198,16 @@ class SettingsViewModel(
     fun updateApiKey(key: String) { _uiState.update { it.copy(apiKey = key, isSaved = false, validationError = null) } }
     fun updateFirecrawlApiKey(key: String) { _uiState.update { it.copy(firecrawlApiKey = key, isSaved = false) } }
     fun updateTextPath(path: String) { _uiState.update { it.copy(textPath = path, isSaved = false, validationError = null) } }
+    fun updateMicrosoftClientId(id: String) { _uiState.update { it.copy(microsoftClientId = id) } }
+    fun updateMicrosoftTenant(tenant: String) { _uiState.update { it.copy(microsoftTenant = tenant) } }
+
+    fun saveMicrosoftConfig() {
+        val state = _uiState.value
+        localStorage.saveMicrosoftClientId(state.microsoftClientId)
+        localStorage.saveMicrosoftTenant(state.microsoftTenant)
+        microsoftAuthService.reinitializeMsal()
+        _uiState.update { it.copy(isSaved = true) }
+    }
     fun updateModelName(model: String) { 
         val ext = _uiState.value.savedModelsList.find { it.modelName == model }
         _uiState.update { it.copy(modelName = model, supportsVision = ext?.supportsVision ?: false, isSaved = false, validationError = null) }
@@ -207,6 +227,39 @@ class SettingsViewModel(
         viewModelScope.launch {
             settingsRepository.removeFirecrawlApiKey()
             _uiState.update { it.copy(firecrawlApiKey = "", isSaved = true) }
+        }
+    }
+
+    fun testMicrosoftProfile() {
+        if (_uiState.value.microsoftAccount == null) {
+            _uiState.update { it.copy(testError = "Please connect Outlook account first.") }
+            return
+        }
+        _uiState.update { it.copy(isTesting = true, testError = null, testResult = null) }
+        viewModelScope.launch {
+            val result = microsoftGraphRepository.loadProfile()
+            if (microsoftGraphRepository.error.value == null) {
+                _uiState.update { it.copy(isTesting = false, testResult = "Profile: $result") }
+            } else {
+                _uiState.update { it.copy(isTesting = false, testError = "Profile Test Failed: ${microsoftGraphRepository.error.value}") }
+            }
+        }
+    }
+
+    fun testMicrosoftInbox() {
+        if (_uiState.value.microsoftAccount == null) {
+            _uiState.update { it.copy(testError = "Please connect Outlook account first.") }
+            return
+        }
+        _uiState.update { it.copy(isTesting = true, testError = null, testResult = null) }
+        viewModelScope.launch {
+            microsoftGraphRepository.loadLatestEmails()
+            if (microsoftGraphRepository.error.value == null) {
+                val count = microsoftGraphRepository.emails.value.size
+                _uiState.update { it.copy(isTesting = false, testResult = "Successfully fetched $count recent emails.") }
+            } else {
+                _uiState.update { it.copy(isTesting = false, testError = "Inbox Test Failed: ${microsoftGraphRepository.error.value}") }
+            }
         }
     }
 
@@ -535,13 +588,15 @@ class SettingsViewModel(
     class Factory(
         private val settingsRepository: SettingsRepository,
         private val microsoftAuthService: MicrosoftAuthService,
+        private val microsoftGraphRepository: com.example.data.MicrosoftGraphRepository,
         private val okHttpClient: OkHttpClient,
-        private val moshi: Moshi
+        private val moshi: Moshi,
+        private val localStorage: com.example.data.LocalStorage
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             if (modelClass.isAssignableFrom(SettingsViewModel::class.java)) {
-                return SettingsViewModel(settingsRepository, microsoftAuthService, okHttpClient, moshi) as T
+                return SettingsViewModel(settingsRepository, microsoftAuthService, microsoftGraphRepository, okHttpClient, moshi, localStorage) as T
             }
             throw IllegalArgumentException("Unknown ViewModel class")
         }

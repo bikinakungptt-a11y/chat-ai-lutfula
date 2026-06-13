@@ -1,7 +1,10 @@
 package com.example.ui.outlook
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -63,6 +66,38 @@ fun OutlookScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            val folders = listOf(
+                "inbox" to "Inbox",
+                "sentitems" to "Sent",
+                "junkemail" to "Junk",
+                "archive" to "Archive",
+                "deleteditems" to "Deleted"
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                folders.forEach { (id, name) ->
+                    val isSelected = uiState.selectedFolder == id
+                    val bgColor = if (isSelected) PrimaryBlue else MaterialTheme.colorScheme.surface
+                    val contentColor = if (isSelected) Color.White else Color.Gray
+
+                    Box(
+                        modifier = Modifier
+                            .padding(end = 8.dp)
+                            .background(bgColor, RoundedCornerShape(16.dp))
+                            .border(1.dp, if (isSelected) PrimaryBlue else OutlineDark, RoundedCornerShape(16.dp))
+                            .clickable { viewModel.loadEmails(id) }
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Text(name, color = contentColor, fontSize = 14.sp)
+                    }
+                }
+            }
+
             // Search Bar
             OutlinedTextField(
                 value = searchQuery,
@@ -211,6 +246,22 @@ fun OutlookScreen(
                                     maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
                                 )
+                                if (email.hasAttachments == true) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Filled.Email, contentDescription = null, tint = PrimaryBlue, modifier = Modifier.size(14.dp)) // Using email icon as generic attachment icon
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Ada lampiran", color = PrimaryBlue, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                                if (!email.webLink.isNullOrBlank()) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    val contextUri = androidx.compose.ui.platform.LocalContext.current
+                                    Text("Buka di Browser", color = Color.Cyan, fontSize = 12.sp, modifier = Modifier.clickable { 
+                                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(email.webLink))
+                                        contextUri.startActivity(intent)
+                                    })
+                                }
                                 Spacer(modifier = Modifier.height(12.dp))
                                 Button(
                                     onClick = { onAskAi(email) },

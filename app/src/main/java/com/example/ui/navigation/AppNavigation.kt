@@ -50,6 +50,8 @@ fun AppNavigation() {
             chatRepository,
             AppContainer.getMemoryRepository(context),
             AppContainer.getLocalStorage(context),
+            AppContainer.getMicrosoftAuthService(context),
+            AppContainer.getMicrosoftGraphRepository(context),
             AppContainer.okHttpClient,
             AppContainer.moshi
         )
@@ -58,8 +60,10 @@ fun AppNavigation() {
         factory = SettingsViewModel.Factory(
             settingsRepository,
             AppContainer.getMicrosoftAuthService(context),
+            AppContainer.getMicrosoftGraphRepository(context),
             AppContainer.okHttpClient,
-            AppContainer.moshi
+            AppContainer.moshi,
+            AppContainer.getLocalStorage(context)
         )
     )
 

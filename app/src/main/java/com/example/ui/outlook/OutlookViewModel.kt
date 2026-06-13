@@ -18,7 +18,8 @@ data class OutlookUiState(
     val emails: List<GraphEmail> = emptyList(),
     val isLoading: Boolean = false,
     val error: String? = null,
-    val microsoftAccount: IAccount? = null
+    val microsoftAccount: IAccount? = null,
+    val selectedFolder: String = "inbox"
 )
 
 class OutlookViewModel(
@@ -34,7 +35,7 @@ class OutlookViewModel(
             microsoftAuthService.account.collectLatest { account ->
                 _uiState.value = _uiState.value.copy(microsoftAccount = account)
                 if (account != null && _uiState.value.emails.isEmpty()) {
-                    loadEmails()
+                    loadEmails(_uiState.value.selectedFolder)
                 }
             }
         }
@@ -55,15 +56,16 @@ class OutlookViewModel(
         }
     }
 
-    fun loadEmails() {
+    fun loadEmails(folderId: String = "inbox") {
+        _uiState.value = _uiState.value.copy(selectedFolder = folderId)
         viewModelScope.launch {
-            graphRepository.loadLatestEmails()
+            graphRepository.loadLatestEmails(folderId)
         }
     }
 
     fun searchEmails(query: String) {
         if (query.isBlank()) {
-            loadEmails()
+            loadEmails(_uiState.value.selectedFolder)
             return
         }
         viewModelScope.launch {

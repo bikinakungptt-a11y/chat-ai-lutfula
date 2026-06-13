@@ -17,7 +17,9 @@ data class GraphEmail(
     val subject: String?,
     val bodyPreview: String?,
     val receivedDateTime: String?,
-    val sender: GraphEmailSender?
+    val sender: GraphEmailSender?,
+    val webLink: String?,
+    val hasAttachments: Boolean?
 )
 
 data class GraphEmailSender(
@@ -33,18 +35,29 @@ data class GraphEmailsResponse(
     val value: List<GraphEmail>
 )
 
+data class GraphProfile(
+    val id: String?,
+    val displayName: String?,
+    val mail: String?,
+    val userPrincipalName: String?
+)
+
 interface MicrosoftGraphApi {
-    @GET("v1.0/me/messages")
+    @GET("v1.0/me")
+    suspend fun getProfile(): GraphProfile
+
+    @GET("v1.0/me/mailFolders/{folderId}/messages")
     suspend fun getMessages(
-        @Query("\$select") select: String = "sender,subject,receivedDateTime,bodyPreview",
-        @Query("\$top") top: Int = 10
+        @retrofit2.http.Path("folderId") folderId: String = "inbox",
+        @Query("\$select") select: String = "subject,from,receivedDateTime,bodyPreview,webLink,hasAttachments,sender",
+        @Query("\$top") top: Int = 25
     ): GraphEmailsResponse
 
     @GET("v1.0/me/messages")
     suspend fun searchMessages(
         @Query("\$search") search: String,
-        @Query("\$select") select: String = "sender,subject,receivedDateTime,bodyPreview",
-        @Query("\$top") top: Int = 20
+        @Query("\$select") select: String = "subject,from,receivedDateTime,bodyPreview,webLink,hasAttachments,sender",
+        @Query("\$top") top: Int = 25
     ): GraphEmailsResponse
 }
 
@@ -81,14 +94,47 @@ class MicrosoftGraphRepository(private val authService: MicrosoftAuthService) {
             .create(MicrosoftGraphApi::class.java)
     }
 
-    suspend fun loadLatestEmails() {
+    suspend fun loadProfile(): String {
+        _isLoading.value = true
+        _error.value = null
+        return try {
+            val profile = graphApi.getProfile()
+            val email = profile.mail ?: profile.userPrincipalName ?: "Unknown Email"
+            val name = profile.displayName ?: "Unknown Name"
+            "Profile Name: $name\nEmail: $email"
+        } catch (e: retrofit2.HttpException) {
+            val errMessage = when (e.code()) {
+                401 -> "Unauthorized. Please login again."
+                403 -> "Forbidden. Need permission to access this resource."
+                404 -> "Resource not found on Microsoft Graph."
+                else -> "Microsoft Graph error: ${e.code()}"
+            }
+            _error.value = errMessage
+            errMessage
+        } catch (e: Exception) {
+            val errMessage = "Network error: ${e.message}"
+            _error.value = errMessage
+            errMessage
+        } finally {
+            _isLoading.value = false
+        }
+    }
+
+    suspend fun loadLatestEmails(folderId: String = "inbox") {
         _isLoading.value = true
         _error.value = null
         try {
-            val response = graphApi.getMessages()
+            val response = graphApi.getMessages(folderId = folderId)
             _emails.value = response.value
+        } catch (e: retrofit2.HttpException) {
+             _error.value = when (e.code()) {
+                401 -> "Unauthorized. Please login again."
+                403 -> "Forbidden. Need permission to access inbox."
+                404 -> "Inbox not found."
+                else -> "Microsoft Graph error: ${e.code()}"
+            }
         } catch (e: Exception) {
-            _error.value = "Failed to load emails: ${e.message}"
+            _error.value = "Network error: ${e.message}"
         } finally {
             _isLoading.value = false
         }
@@ -100,8 +146,15 @@ class MicrosoftGraphRepository(private val authService: MicrosoftAuthService) {
         try {
             val response = graphApi.searchMessages(search = "\"$query\"")
             _emails.value = response.value
+        } catch (e: retrofit2.HttpException) {
+             _error.value = when (e.code()) {
+                401 -> "Unauthorized. Please login again."
+                403 -> "Forbidden. Need permission to search."
+                404 -> "Endpoint not found."
+                else -> "Microsoft Graph error: ${e.code()}"
+            }
         } catch (e: Exception) {
-            _error.value = "Failed to search emails: ${e.message}"
+            _error.value = "Network error: ${e.message}"
         } finally {
             _isLoading.value = false
         }
