@@ -29,7 +29,8 @@ data class SettingsUiState(
     val apiKey: String = "",
     val textPath: String = "/chat/completions",
     val modelName: String = "",
-    val savedModelsList: List<String> = emptyList(),
+    val supportsVision: Boolean = false,
+    val savedModelsList: List<com.example.network.AiModelConfig> = emptyList(),
     val isSaved: Boolean = false,
     val isTesting: Boolean = false,
     val testResult: String? = null,
@@ -111,7 +112,9 @@ class SettingsViewModel(
         }
         viewModelScope.launch {
             settingsRepository.savedModelsList.collect { models ->
-                _uiState.update { it.copy(savedModelsList = models) }
+                val currentModel = _uiState.value.modelName
+                val matches = models.find { it.modelName == currentModel }
+                _uiState.update { it.copy(savedModelsList = models, supportsVision = matches?.supportsVision ?: it.supportsVision) }
             }
         }
     }
@@ -185,7 +188,11 @@ class SettingsViewModel(
     fun updateApiKey(key: String) { _uiState.update { it.copy(apiKey = key, isSaved = false, validationError = null) } }
     fun updateFirecrawlApiKey(key: String) { _uiState.update { it.copy(firecrawlApiKey = key, isSaved = false) } }
     fun updateTextPath(path: String) { _uiState.update { it.copy(textPath = path, isSaved = false, validationError = null) } }
-    fun updateModelName(model: String) { _uiState.update { it.copy(modelName = model, isSaved = false, validationError = null) } }
+    fun updateModelName(model: String) { 
+        val ext = _uiState.value.savedModelsList.find { it.modelName == model }
+        _uiState.update { it.copy(modelName = model, supportsVision = ext?.supportsVision ?: false, isSaved = false, validationError = null) }
+    }
+    fun updateSupportsVision(supports: Boolean) { _uiState.update { it.copy(supportsVision = supports, isSaved = false) } }
 
     fun saveFirecrawlKey() {
         viewModelScope.launch {
@@ -243,7 +250,14 @@ class SettingsViewModel(
             val state = _uiState.value
             val keyToSave = if (state.apiKey == MASKED_KEY_PLACEHOLDER) settingsRepository.apiKey.value else state.apiKey
             settingsRepository.saveSettings(state.textProvider, keyToSave, state.baseUrl, state.textPath, state.modelName)
-            settingsRepository.addSavedModel(state.modelName)
+            
+            val modelConfig = com.example.network.AiModelConfig(
+                modelName = state.modelName,
+                providerName = state.textProvider,
+                supportsVision = state.supportsVision
+            )
+            settingsRepository.addSavedModel(modelConfig)
+            
             _uiState.update { it.copy(isSaved = true, validationError = null, testResult = null, testError = null, apiKey = if (keyToSave.isNotBlank()) MASKED_KEY_PLACEHOLDER else "") }
         }
     }
@@ -263,7 +277,12 @@ class SettingsViewModel(
                 
                 val requestBody = ChatRequest(
                     model = state.modelName,
-                    messages = listOf(ChatMessage(role = "user", content = "Hello"))
+                    messages = listOf(
+                        com.example.network.ChatRequestMessage(
+                            role = "user", 
+                            content = listOf(com.example.network.VisionContent(type = "text", text = "Hello"))
+                        )
+                    )
                 )
 
                 val requestAdapter = moshi.adapter(ChatRequest::class.java)

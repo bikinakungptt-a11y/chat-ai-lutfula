@@ -490,7 +490,7 @@ fun ChatScreen(
                     var showModelMenu by remember { mutableStateOf(false) }
                     
                     val displayModel = uiState.currentModel
-                        .takeIf { it.isNotBlank() } ?: (uiState.savedModelsList.firstOrNull() ?: "Select model")
+                        .takeIf { it.isNotBlank() } ?: (uiState.savedModelsList.firstOrNull()?.modelName ?: "Select model")
                     
                     val shortModelName = displayModel.substringAfterLast("/")
                     val modelText = "$shortModelName ▼"
@@ -517,12 +517,12 @@ fun ChatScreen(
                             onDismissRequest = { showModelMenu = false },
                             modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant)
                         ) {
-                            uiState.savedModelsList.forEach { model ->
+                            uiState.savedModelsList.forEach { modelCfg ->
                                 DropdownMenuItem(
-                                    text = { Text(model.substringAfterLast("/"), color = Color.White) },
+                                    text = { Text(modelCfg.modelName.substringAfterLast("/"), color = Color.White) },
                                     onClick = {
                                         showModelMenu = false
-                                        viewModel.updateSelectedModel(model)
+                                        viewModel.updateSelectedModel(modelCfg.modelName)
                                     }
                                 )
                             }

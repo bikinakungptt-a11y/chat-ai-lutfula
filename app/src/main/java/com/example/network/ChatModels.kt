@@ -4,14 +4,42 @@ import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 
 @JsonClass(generateAdapter = true)
+data class AiModelConfig(
+    val modelName: String,
+    val providerName: String = "",
+    val supportsVision: Boolean = false,
+    val supportsReasoning: Boolean = false,
+    val supportsImageGeneration: Boolean = false,
+    val supportsVideoGeneration: Boolean = false
+)
+
+@JsonClass(generateAdapter = true)
 data class ReasoningConfig(
     val effort: String
 )
 
 @JsonClass(generateAdapter = true)
+data class VisionContent(
+    val type: String,
+    val text: String? = null,
+    @Json(name = "image_url") val imageUrl: VisionImageUrl? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class VisionImageUrl(
+    val url: String
+)
+
+@JsonClass(generateAdapter = true)
+data class ChatRequestMessage(
+    val role: String,
+    val content: List<VisionContent>
+)
+
+@JsonClass(generateAdapter = true)
 data class ChatRequest(
     val model: String,
-    val messages: List<ChatMessage>,
+    val messages: List<ChatRequestMessage>,
     val stream: Boolean = false,
     val reasoning: ReasoningConfig? = null
 )

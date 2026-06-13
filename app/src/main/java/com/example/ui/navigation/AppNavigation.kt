@@ -45,6 +45,7 @@ fun AppNavigation() {
 
     val chatViewModel: ChatViewModel = viewModel(
         factory = ChatViewModel.Factory(
+            context.applicationContext,
             settingsRepository,
             chatRepository,
             AppContainer.getMemoryRepository(context),

@@ -284,6 +284,17 @@ fun SettingsScreen(
                 shape = RoundedCornerShape(16.dp)
             )
 
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { viewModel.updateSupportsVision(!uiState.supportsVision) }) {
+                androidx.compose.material3.Checkbox(
+                    checked = uiState.supportsVision,
+                    onCheckedChange = { viewModel.updateSupportsVision(it) },
+                    colors = androidx.compose.material3.CheckboxDefaults.colors(checkedColor = PrimaryNeon, uncheckedColor = OutlineDark)
+                )
+                Text("Supports Vision / Bisa membaca gambar", color = Color.White, fontSize = 14.sp)
+            }
+
             if (uiState.savedModelsList.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Column(modifier = Modifier.fillMaxWidth()) {
@@ -295,12 +306,15 @@ fun SettingsScreen(
                                 .padding(vertical = 2.dp)
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(MaterialTheme.colorScheme.surfaceVariant)
-                                .clickable { viewModel.updateModelName(savedModel) }
+                                .clickable { viewModel.updateModelName(savedModel.modelName) }
                                 .padding(horizontal = 12.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(savedModel, color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                            IconButton(onClick = { viewModel.removeSavedModel(savedModel) }, modifier = Modifier.size(24.dp)) {
+                            Text(savedModel.modelName, color = Color.White, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            if (savedModel.supportsVision) {
+                                Icon(Icons.Filled.Visibility, contentDescription = "Vision", tint = PrimaryNeon, modifier = Modifier.size(16.dp).padding(end = 4.dp))
+                            }
+                            IconButton(onClick = { viewModel.removeSavedModel(savedModel.modelName) }, modifier = Modifier.size(24.dp)) {
                                 Icon(Icons.Filled.Close, contentDescription = "Remove", tint = Color.Gray, modifier = Modifier.size(16.dp))
                             }
                         }

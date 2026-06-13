@@ -9,14 +9,21 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.Types
+import com.example.network.AiModelConfig
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
 class SettingsRepository(private val context: Context) {
+    private val moshi = Moshi.Builder().build()
+    private val modelConfigsAdapter = moshi.adapter<List<AiModelConfig>>(Types.newParameterizedType(List::class.java, AiModelConfig::class.java))
+
     private val BASE_URL = stringPreferencesKey("base_url")
     private val TEXT_PATH = stringPreferencesKey("text_path")
     private val MODEL = stringPreferencesKey("model")
     private val SAVED_MODELS = stringPreferencesKey("saved_models")
+    private val SAVED_MODELS_JSON = stringPreferencesKey("saved_models_json")
     private val TEXT_PROVIDER = stringPreferencesKey("text_provider")
     private val ASSISTANT_LANGUAGE_PREFERENCE = stringPreferencesKey("assistantLanguagePreference")
     private val FIRECRAWL_API_KEY_PREF = stringPreferencesKey("firecrawl_api_key_pref")
@@ -74,24 +81,53 @@ class SettingsRepository(private val context: Context) {
     val textPath: Flow<String> = context.dataStore.data.map { it[TEXT_PATH] ?: "/chat/completions" }
     val model: Flow<String> = context.dataStore.data.map { it[MODEL] ?: "" }
     
-    val savedModelsList: Flow<List<String>> = context.dataStore.data.map { prefs ->
-        prefs[SAVED_MODELS]?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+    val savedModelsList: Flow<List<AiModelConfig>> = context.dataStore.data.map { prefs ->
+        val json = prefs[SAVED_MODELS_JSON]
+        if (!json.isNullOrBlank()) {
+            return@map try {
+                modelConfigsAdapter.fromJson(json) ?: emptyList()
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
+        // Fallback to old format
+        val oldString = prefs[SAVED_MODELS]?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+        oldString.map { AiModelConfig(modelName = it) }
     }
     
-    suspend fun addSavedModel(modelName: String) {
-        if (modelName.isBlank()) return
+    suspend fun addSavedModel(modelConfig: AiModelConfig) {
+        if (modelConfig.modelName.isBlank()) return
         context.dataStore.edit { prefs ->
-            val current = prefs[SAVED_MODELS]?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
-            if (!current.contains(modelName)) {
-                prefs[SAVED_MODELS] = (listOf(modelName) + current).joinToString(",")
+            // load current
+            val json = prefs[SAVED_MODELS_JSON]
+            var current: List<AiModelConfig> = emptyList()
+            if (!json.isNullOrBlank()) {
+                current = try { modelConfigsAdapter.fromJson(json) ?: emptyList() } catch(e: Exception) { emptyList() }
+            } else {
+                val oldString = prefs[SAVED_MODELS]?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+                current = oldString.map { AiModelConfig(modelName = it) }
             }
+
+            val updated = current.filter { it.modelName != modelConfig.modelName }.toMutableList()
+            updated.add(0, modelConfig) // add to top
+            
+            prefs[SAVED_MODELS_JSON] = modelConfigsAdapter.toJson(updated)
         }
     }
     
     suspend fun removeSavedModel(modelName: String) {
         context.dataStore.edit { prefs ->
-            val current = prefs[SAVED_MODELS]?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
-            prefs[SAVED_MODELS] = current.filter { it != modelName }.joinToString(",")
+            val json = prefs[SAVED_MODELS_JSON]
+            var current: List<AiModelConfig> = emptyList()
+            if (!json.isNullOrBlank()) {
+                current = try { modelConfigsAdapter.fromJson(json) ?: emptyList() } catch(e: Exception) { emptyList() }
+            } else {
+                val oldString = prefs[SAVED_MODELS]?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+                current = oldString.map { AiModelConfig(modelName = it) }
+            }
+
+            val updated = current.filter { it.modelName != modelName }
+            prefs[SAVED_MODELS_JSON] = modelConfigsAdapter.toJson(updated)
         }
     }
 

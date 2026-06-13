@@ -45,7 +45,7 @@ data class ChatUiState(
     val sessions: List<ChatSessionEntity> = emptyList(),
     val currentSessionId: Long? = null,
     val currentModel: String = "",
-    val savedModelsList: List<String> = emptyList(),
+    val savedModelsList: List<com.example.network.AiModelConfig> = emptyList(),
     val isLoading: Boolean = false,
     val loadingText: String? = null,
     val error: String? = null,
@@ -55,6 +55,7 @@ data class ChatUiState(
 )
 
 class ChatViewModel(
+    private val applicationContext: android.content.Context,
     private val settingsRepository: SettingsRepository,
     private val chatRepository: ChatRepository,
     private val memoryRepository: com.example.data.MemoryRepository,
@@ -86,8 +87,8 @@ class ChatViewModel(
             settingsRepository.savedModelsList.collect { models ->
                 _uiState.update { it.copy(savedModelsList = models) }
                 val current = _uiState.value.currentModel
-                if (current.isNotBlank() && models.isNotEmpty() && !models.contains(current)) {
-                    updateSelectedModel(models.first())
+                if (current.isNotBlank() && models.isNotEmpty() && !models.any { it.modelName == current }) {
+                    updateSelectedModel(models.first().modelName)
                 } else if (current.isNotBlank() && models.isEmpty()) {
                     updateSelectedModel("")
                 }
@@ -297,6 +298,9 @@ class ChatViewModel(
                 val path = settingsRepository.textPath.first()
                 val modelName = settingsRepository.model.first()
                 val prefFirecrawlKey = settingsRepository.firecrawlApiKey.first()
+                val aiModels = settingsRepository.savedModelsList.first()
+                val supportsVision = aiModels.find { it.modelName == modelName }?.supportsVision ?: false
+
                 val firecrawlKey = if (prefFirecrawlKey.isNotBlank()) prefFirecrawlKey else com.example.BuildConfig.FIRECRAWL_API_KEY
                 
                 android.util.Log.d("ChatViewModel", "Firecrawl configured: ${firecrawlKey.isNotBlank() && firecrawlKey != "\"YOUR_FIRECRAWL_API_KEY\"" && firecrawlKey != "YOUR_FIRECRAWL_API_KEY"}")
@@ -454,21 +458,61 @@ class ChatViewModel(
                     systemPrompt += "\n\nThe user requested to use the following email as context:\n$emailContext"
                 }
 
-                val chatMessages = mutableListOf<ChatMessage>()
-                chatMessages.add(ChatMessage(role = "system", content = systemPrompt))
+                val chatMessages = mutableListOf<com.example.network.ChatRequestMessage>()
+                chatMessages.add(com.example.network.ChatRequestMessage(role = "system", content = listOf(com.example.network.VisionContent(type = "text", text = systemPrompt))))
                 
-                // Map existing messages (excluding the warnings if any) from the snapshot
-                chatMessages.addAll(previousMessagesSnapshot.filter { !it.content.startsWith("⚠️") }.map { 
-                    ChatMessage(role = it.role, content = it.content) 
-                })
+                // Track if image sending failed
+                var imageSendFailed = false
+                var hasAnyImage = false
+
+                val makeMessage = { role: String, content: String, imgUri: String?, isNew: Boolean ->
+                    val parts = mutableListOf<com.example.network.VisionContent>()
+                    if (!imgUri.isNullOrEmpty()) {
+                        hasAnyImage = true
+                        val b64 = uriToBase64(imgUri)
+                        if (b64 != null) {
+                            parts.add(com.example.network.VisionContent(type = "text", text = content.ifEmpty { "Please check this image." }))
+                            parts.add(com.example.network.VisionContent(type = "image_url", imageUrl = com.example.network.VisionImageUrl(url = b64)))
+                        } else {
+                            if (isNew) {
+                                imageSendFailed = true
+                            }
+                            parts.add(com.example.network.VisionContent(type = "text", text = content)) // fallback to text only for old messages if permission lost
+                        }
+                    } else {
+                        parts.add(com.example.network.VisionContent(type = "text", text = content))
+                    }
+                    com.example.network.ChatRequestMessage(role = role, content = parts)
+                }
+                
+                // Map existing messages
+                previousMessagesSnapshot.filter { !it.content.startsWith("⚠️") }.forEach {
+                    chatMessages.add(makeMessage(it.role, it.content, it.imageUri, false))
+                }
                 
                 val localInstruction = localStorage.getInstruction()
                 if (localInstruction.isNotEmpty()) {
-                    chatMessages.add(ChatMessage(role = "system", content = "CRITICAL USER PREFERENCE (ALWAYS FOLLOW THIS IN YOUR NEXT RESPONSE):\n$localInstruction"))
+                    chatMessages.add(com.example.network.ChatRequestMessage(role = "system", content = listOf(com.example.network.VisionContent(type = "text", text = "CRITICAL USER PREFERENCE (ALWAYS FOLLOW THIS IN YOUR NEXT RESPONSE):\n$localInstruction"))))
                 }
 
                 // Manually append the latest user message
-                chatMessages.add(ChatMessage(role = "user", content = messageText))
+                chatMessages.add(makeMessage("user", messageText, imageUri, true))
+
+                if (imageSendFailed) {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            error = "Gagal memproses/mengirim gambar. Harap periksa izin akses atau gambar tidak valid."
+                        )
+                    }
+                    return@launch
+                }
+                
+                if (hasAnyImage && !supportsVision) {
+                   chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "⚠️ Model ini tidak mendukung membaca gambar. Pilih model vision."))
+                   _uiState.update { it.copy(isLoading = false, error = "Model ini tidak mendukung membaca gambar. Pilih model vision.") }
+                   return@launch
+                }
 
                 val enableReasoningParameter = true // Settings flag
 
@@ -556,7 +600,27 @@ class ChatViewModel(
         }
     }
 
+    private fun uriToBase64(uriStr: String?): String? {
+        if (uriStr.isNullOrEmpty()) return null
+        return try {
+            val uri = android.net.Uri.parse(uriStr)
+            val resolver = applicationContext.contentResolver
+            val inputStream = resolver.openInputStream(uri)
+            val bytes = inputStream?.readBytes()
+            inputStream?.close()
+            if (bytes != null) {
+                val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.DEFAULT or android.util.Base64.NO_WRAP)
+                var mimeType = resolver.getType(uri) ?: "image/jpeg"
+                "data:$mimeType;base64,$base64"
+            } else null
+        } catch (e: Exception) {
+            android.util.Log.e("ChatViewModel", "Error converting image to base64", e)
+            null
+        }
+    }
+
     class Factory(
+        private val applicationContext: android.content.Context,
         private val settingsRepository: SettingsRepository,
         private val chatRepository: ChatRepository,
         private val memoryRepository: com.example.data.MemoryRepository,
@@ -567,7 +631,7 @@ class ChatViewModel(
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             if (modelClass.isAssignableFrom(ChatViewModel::class.java)) {
-                return ChatViewModel(settingsRepository, chatRepository, memoryRepository, localStorage, okHttpClient, moshi) as T
+                return ChatViewModel(applicationContext, settingsRepository, chatRepository, memoryRepository, localStorage, okHttpClient, moshi) as T
             }
             throw IllegalArgumentException("Unknown ViewModel class")
         }
