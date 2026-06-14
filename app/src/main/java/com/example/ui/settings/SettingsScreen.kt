@@ -78,7 +78,7 @@ fun SettingsScreen(
                 OutlinedTextField(value = uiState.microsoftTenant, onValueChange = viewModel::updateMicrosoftTenant, label = { Text("Tenant, default: common") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 Text("Supported account types: personal Microsoft accounts and organizational accounts. Tenant common tetap dipakai.", fontSize = 12.sp, color = Color.Gray)
                 Text(
-                    text = "Redirect URI untuk Azure harus mengikuti build terbaru: msauth://com.aistudio.aichatmobile.xmqpr/<encoded-signature-hash>. Jangan pakai hash lama jika signing key berubah.",
+                    text = "Redirect URI Azure mengikuti build terbaru: msauth://com.aistudio.aichatmobile.xmqpr/<encoded-signature-hash>. Jangan pakai hash lama jika signing key berubah.",
                     fontSize = 12.sp,
                     color = PrimaryNeon,
                     fontWeight = FontWeight.Bold,
@@ -108,7 +108,7 @@ fun SettingsScreen(
                 }
             }
 
-            Text("Media API settings tetap disimpan oleh SettingsViewModel. Tampilan ini dirapikan agar Outlook/MSAL tidak menampilkan redirect hash lama.", color = Color.Gray, fontSize = 12.sp)
+            Text("Catatan: tampilan media API sebelumnya perlu dicek ulang setelah build karena bagian SettingsScreen telah dirapikan agar tidak menampilkan redirect hash lama.", color = Color.Gray, fontSize = 12.sp)
             Spacer(Modifier.height(24.dp))
         }
     }
