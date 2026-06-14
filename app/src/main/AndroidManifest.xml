@@ -46,24 +46,6 @@
                     android:host="com.aistudio.aichatmobile.xmqpr"
                     android:path="/p0faKYsmAJ1RKGOUaCxHLhlmMco=" />
             </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data
-                    android:scheme="msauth"
-                    android:host="com.aistudio.aichatmobile.xmqpr"
-                    android:path="/EfKLa/C+05Hz/xBbYz1eP6zecJ0=" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data
-                    android:scheme="msauth"
-                    android:host="com.aistudio.aichatmobile.xmqpr"
-                    android:path="/11bYT9aNs+E0IEoY5eR3AwN8mEE=" />
-            </intent-filter>
         </activity>
 
         <provider
