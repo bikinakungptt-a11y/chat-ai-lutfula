@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.File
+import java.net.URLEncoder
 import kotlin.coroutines.resume
 
 class MicrosoftAuthService(private val context: Context) {
@@ -24,6 +25,7 @@ class MicrosoftAuthService(private val context: Context) {
     val authError: StateFlow<String?> = _authError.asStateFlow()
 
     private val scopes = arrayOf("User.Read", "Mail.Read", "offline_access")
+    private val fallbackSignatureHash = "EfKLa/C+05Hz/xBbYz1eP6zecJ0="
 
     init {
         initializeMsal()
@@ -40,8 +42,33 @@ class MicrosoftAuthService(private val context: Context) {
         return msalApp != null
     }
 
+    private fun cleanConfigValue(value: String?): String {
+        return value
+            ?.trim()
+            ?.removeSurrounding("\"")
+            ?.removeSurrounding("'")
+            .orEmpty()
+    }
+
+    private fun getConfiguredSignatureHash(): String {
+        val configuredHash = cleanConfigValue(BuildConfig.MICROSOFT_SIGNATURE_HASH)
+        return if (configuredHash.isNotBlank() && configuredHash != "YOUR_BASE64_SIGNATURE_HASH") {
+            configuredHash
+        } else {
+            fallbackSignatureHash
+        }
+    }
+
+    private fun encodeSignatureHash(signatureHash: String): String {
+        return URLEncoder.encode(signatureHash, "UTF-8")
+    }
+
+    fun getRedirectUriForAzure(): String {
+        return "msauth://${context.packageName}/${encodeSignatureHash(getConfiguredSignatureHash())}"
+    }
+
     @Suppress("DEPRECATION")
-    private fun getSignatureHash(): String {
+    private fun getInstalledSignatureHashForDiagnostics(): String {
         try {
             val info = context.packageManager.getPackageInfo(context.packageName, android.content.pm.PackageManager.GET_SIGNATURES)
             val signatures = info.signatures
@@ -53,9 +80,9 @@ class MicrosoftAuthService(private val context: Context) {
                 }
             }
         } catch (e: Exception) {
-            Log.e("MSAL", "Error getting signature hash", e)
+            Log.e("MSAL", "Error getting installed signature hash", e)
         }
-        return "EfKLa/C+05Hz/xBbYz1eP6zecJ0=" // Fallback to debug keystore hash
+        return ""
     }
 
     private fun initializeMsal() {
@@ -72,14 +99,23 @@ class MicrosoftAuthService(private val context: Context) {
             
             val tenantId = localStorage.getMicrosoftTenant()
 
-            val signatureHash = getSignatureHash()
-            val encodedHash = java.net.URLEncoder.encode(signatureHash, "UTF-8")
+            val redirectUri = getRedirectUriForAzure()
+            val configuredSignatureHash = getConfiguredSignatureHash()
+            val installedSignatureHash = getInstalledSignatureHashForDiagnostics()
+
+            Log.i("MSAL", "MSAL redirect URI: $redirectUri")
+            if (installedSignatureHash.isNotBlank() && installedSignatureHash != configuredSignatureHash) {
+                Log.w(
+                    "MSAL",
+                    "Installed signature hash differs from configured MSAL hash. Azure and AndroidManifest must use: $redirectUri"
+                )
+            }
             
             val msalConfigJson = """
             {
               "client_id" : "$clientId",
               "authorization_user_agent" : "DEFAULT",
-              "redirect_uri" : "msauth://com.aistudio.aichatmobile.xmqpr/$encodedHash",
+              "redirect_uri" : "$redirectUri",
               "account_mode" : "SINGLE",
               "broker_redirect_uri_registered": true,
               "authorities" : [
@@ -252,4 +288,3 @@ class MicrosoftAuthService(private val context: Context) {
         }
     }
 }
-
