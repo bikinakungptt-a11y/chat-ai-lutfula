@@ -525,23 +525,58 @@ class ChatViewModel(
                 val chatMessages = mutableListOf<com.example.network.ChatRequestMessage>()
                 chatMessages.add(com.example.network.ChatRequestMessage(role = "system", content = listOf(com.example.network.VisionContent(type = "text", text = systemPrompt))))
                 
-                // Track if image sending failed
-                var imageSendFailed = false
+                // Track if image or file sending failed
+                var attachmentSendFailedMsg: String? = null
                 var hasAnyImage = false
 
-                val makeMessage = { role: String, content: String, imgUri: String?, isNew: Boolean ->
+                val makeMessage = { role: String, content: String, attachmentUriStr: String?, isNew: Boolean ->
                     val parts = mutableListOf<com.example.network.VisionContent>()
-                    if (!imgUri.isNullOrEmpty()) {
-                        hasAnyImage = true
-                        val b64 = uriToBase64(imgUri)
-                        if (b64 != null) {
-                            parts.add(com.example.network.VisionContent(type = "text", text = content.ifEmpty { "Please check this image." }))
-                            parts.add(com.example.network.VisionContent(type = "image_url", imageUrl = com.example.network.VisionImageUrl(url = b64)))
-                        } else {
-                            if (isNew) {
-                                imageSendFailed = true
+                    if (!attachmentUriStr.isNullOrEmpty()) {
+                        val uri = android.net.Uri.parse(attachmentUriStr)
+                        val mimeType = applicationContext.contentResolver.getType(uri) ?: ""
+                        
+                        if (mimeType.startsWith("image/")) {
+                            hasAnyImage = true
+                            val b64 = uriToBase64(attachmentUriStr)
+                            if (b64 != null) {
+                                parts.add(com.example.network.VisionContent(type = "text", text = content.ifEmpty { "Please check this image." }))
+                                parts.add(com.example.network.VisionContent(type = "image_url", imageUrl = com.example.network.VisionImageUrl(url = b64)))
+                            } else {
+                                if (isNew) {
+                                    attachmentSendFailedMsg = "Gagal memproses/mengirim gambar. Harap periksa izin akses atau gambar tidak valid."
+                                }
+                                parts.add(com.example.network.VisionContent(type = "text", text = content)) // fallback to text only for old messages if permission lost
                             }
-                            parts.add(com.example.network.VisionContent(type = "text", text = content)) // fallback to text only for old messages if permission lost
+                        } else {
+                            var fileText: String? = null
+                            try {
+                                applicationContext.contentResolver.openInputStream(uri)?.use { stream ->
+                                    val size = stream.available()
+                                    if (size < 5 * 1024 * 1024) { // Max 5MB for text extraction inline
+                                        fileText = stream.bufferedReader().readText()
+                                    } else {
+                                        fileText = "File terlalu besar untuk dibaca langsung."
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                android.util.Log.e("ChatViewModel", "Error reading file", e)
+                            }
+                            
+                            if (fileText != null) {
+                                if (mimeType.startsWith("text/") || mimeType.contains("json") || mimeType.contains("csv")) {
+                                    parts.add(com.example.network.VisionContent(type = "text", text = "$content\n\n[Attached File Content]:\n$fileText"))
+                                } else {
+                                    if (isNew) {
+                                        attachmentSendFailedMsg = "Model/API ini belum mendukung membaca file secara langsung (hanya teks/gambar)."
+                                    }
+                                    parts.add(com.example.network.VisionContent(type = "text", text = "$content\n\n[File Attached but type '$mimeType' cannot be parsed locally]"))
+                                }
+                            } else {
+                                if (isNew) {
+                                    attachmentSendFailedMsg = "Gagal membaca konten file."
+                                }
+                                parts.add(com.example.network.VisionContent(type = "text", text = content))
+                            }
                         }
                     } else {
                         parts.add(com.example.network.VisionContent(type = "text", text = content))
@@ -562,11 +597,11 @@ class ChatViewModel(
                 // Manually append the latest user message
                 chatMessages.add(makeMessage("user", messageText, imageUri, true))
 
-                if (imageSendFailed) {
+                if (attachmentSendFailedMsg != null) {
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            error = "Gagal memproses/mengirim gambar. Harap periksa izin akses atau gambar tidak valid."
+                            error = attachmentSendFailedMsg
                         )
                     }
                     return@launch

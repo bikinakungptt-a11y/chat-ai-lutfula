@@ -29,6 +29,8 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.ChatBubbleOutline
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.animation.core.*
@@ -62,28 +64,56 @@ fun ChatScreen(
     onNavigateToStudio: () -> Unit = {},
     onNavigateToOutlook: () -> Unit = {}
 ) {
+    val localContext = androidx.compose.ui.platform.LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var inputText by remember { mutableStateOf("") }
-    var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
-    val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia(),
-        onResult = { uri -> selectedImageUri = uri }
+    var selectedFileUri by remember { mutableStateOf<Uri?>(null) }
+    var selectedFileName by remember { mutableStateOf<String?>(null) }
+    var selectedFileIsImage by remember { mutableStateOf(false) }
+    
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+        onResult = { uri -> 
+            if (uri != null) {
+                val contentResolver = localContext.contentResolver
+                val mimeType = contentResolver.getType(uri) ?: ""
+                
+                var name = "Unknown file"
+                var size = 0L
+                contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                        if (nameIndex != -1) name = cursor.getString(nameIndex)
+                        val sizeIndex = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                        if (sizeIndex != -1) size = cursor.getLong(sizeIndex)
+                    }
+                }
+                
+                if (size > 20 * 1024 * 1024) {
+                    android.widget.Toast.makeText(localContext, "File terlalu besar (max 20MB)", android.widget.Toast.LENGTH_SHORT).show()
+                    return@rememberLauncherForActivityResult
+                }
+
+                selectedFileUri = uri
+                selectedFileName = name
+                selectedFileIsImage = mimeType.startsWith("image/")
+            }
+        }
     )
     val listState = rememberLazyListState()
     var showHistoryDialog by remember { mutableStateOf(false) }
     var sessionToDelete by remember { mutableStateOf<Long?>(null) }
     
-    val context = androidx.compose.ui.platform.LocalContext.current
     var showMicPermissionDialog by remember { mutableStateOf(false) }
 
     val micPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
-            android.widget.Toast.makeText(context, "Microphone access granted. Ready for voice input.", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(localContext, "Microphone access granted. Ready for voice input.", android.widget.Toast.LENGTH_SHORT).show()
             // Voice input logic would go here
         } else {
-            android.widget.Toast.makeText(context, "Microphone permission denied. You can enable it in Settings.", android.widget.Toast.LENGTH_LONG).show()
+            android.widget.Toast.makeText(localContext, "Microphone permission denied. You can enable it in Settings.", android.widget.Toast.LENGTH_LONG).show()
         }
     }
 
@@ -338,26 +368,44 @@ fun ChatScreen(
 
             // Input Row
             Column {
-                if (selectedImageUri != null) {
+                if (selectedFileUri != null) {
                     Box(modifier = Modifier.padding(start = 24.dp, bottom = 0.dp)) {
-                        AsyncImage(
-                            model = selectedImageUri,
-                            contentDescription = "Selected image preview",
-                            modifier = Modifier
-                                .size(80.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant),
-                            contentScale = ContentScale.Crop
-                        )
+                        if (selectedFileIsImage) {
+                            AsyncImage(
+                                model = selectedFileUri,
+                                contentDescription = "Selected image preview",
+                                modifier = Modifier
+                                    .size(80.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                                    .padding(8.dp)
+                                    .padding(end = 24.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Filled.Description, contentDescription = "File", tint = Color.White)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(selectedFileName ?: "File", color = Color.White, fontSize = 14.sp, maxLines = 1)
+                            }
+                        }
                         IconButton(
-                            onClick = { selectedImageUri = null },
+                            onClick = { 
+                                selectedFileUri = null 
+                                selectedFileName = null
+                            },
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
                                 .offset(x = 8.dp, y = (-8).dp)
                                 .size(24.dp)
                                 .background(Color.Black.copy(alpha = 0.5f), CircleShape)
                         ) {
-                            Icon(Icons.Filled.Clear, contentDescription = "Remove image", tint = Color.White, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Filled.Clear, contentDescription = "Remove file", tint = Color.White, modifier = Modifier.size(16.dp))
                         }
                     }
                 }
@@ -372,10 +420,10 @@ fun ChatScreen(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(
-                            onClick = { imagePickerLauncher.launch(androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                            onClick = { filePickerLauncher.launch(arrayOf("*/*")) },
                             modifier = Modifier.size(36.dp)
                         ) {
-                            Icon(Icons.Filled.Image, contentDescription = "Add photo", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Icon(Icons.Filled.AttachFile, contentDescription = "Add file or photo", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         BasicTextField(
@@ -393,14 +441,14 @@ fun ChatScreen(
                             enabled = !uiState.isLoading
                         )
                         
-                        if (inputText.isBlank() && selectedImageUri == null) {
+                        if (inputText.isBlank() && selectedFileUri == null) {
                             Icon(
                                 imageVector = Icons.Filled.Mic,
                                 contentDescription = "Mic",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(24.dp).clickable {
-                                    if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                                        android.widget.Toast.makeText(context, "Voice input ready.", android.widget.Toast.LENGTH_SHORT).show()
+                                    if (androidx.core.content.ContextCompat.checkSelfPermission(localContext, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                        android.widget.Toast.makeText(localContext, "Voice input ready.", android.widget.Toast.LENGTH_SHORT).show()
                                     } else {
                                         showMicPermissionDialog = true
                                     }
@@ -412,10 +460,11 @@ fun ChatScreen(
                                 contentDescription = "Send",
                                 tint = PrimaryNeon,
                                 modifier = Modifier.size(24.dp).clickable {
-                                    if ((inputText.isNotBlank() || selectedImageUri != null) && !uiState.isLoading) {
-                                        viewModel.sendMessage(inputText, selectedImageUri?.toString())
+                                    if ((inputText.isNotBlank() || selectedFileUri != null) && !uiState.isLoading) {
+                                        viewModel.sendMessage(inputText, selectedFileUri?.toString())
                                         inputText = ""
-                                        selectedImageUri = null
+                                        selectedFileUri = null
+                                        selectedFileName = null
                                     }
                                 }
                             )
