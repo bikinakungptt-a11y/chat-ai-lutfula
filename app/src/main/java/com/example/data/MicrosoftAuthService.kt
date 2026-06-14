@@ -55,7 +55,7 @@ class MicrosoftAuthService(private val context: Context) {
         } catch (e: Exception) {
             Log.e("MSAL", "Error getting signature hash", e)
         }
-        return "p0faKYsmAJ1RKGOUaCxHLhlmMco=" // Fallback to debug keystore hash
+        return "p0faKYsmAJ1RKGOUaCxHLhlmMco="
     }
 
     private fun initializeMsal() {
@@ -66,20 +66,19 @@ class MicrosoftAuthService(private val context: Context) {
                 clientId = BuildConfig.MICROSOFT_CLIENT_ID
                 if (clientId.isBlank() || clientId == "YOUR_MICROSOFT_CLIENT_ID") {
                     _authError.value = "Client ID is empty. Please configure it in settings."
-                    return // Cannot initialize without client ID
+                    return
                 }
             }
             
             val tenantId = localStorage.getMicrosoftTenant()
-
             val signatureHash = getSignatureHash()
-            val encodedHash = java.net.URLEncoder.encode(signatureHash, "UTF-8")
+            val redirectUri = "msauth://com.aistudio.aichatmobile.xmqpr/$signatureHash"
             
             val msalConfigJson = """
             {
               "client_id" : "$clientId",
               "authorization_user_agent" : "DEFAULT",
-              "redirect_uri" : "msauth://com.aistudio.aichatmobile.xmqpr/$encodedHash",
+              "redirect_uri" : "$redirectUri",
               "account_mode" : "SINGLE",
               "broker_redirect_uri_registered": true,
               "authorities" : [
@@ -97,7 +96,7 @@ class MicrosoftAuthService(private val context: Context) {
             val configFile = File(context.cacheDir, "auth_config_single_account.json")
             configFile.writeText(msalConfigJson)
             
-            Log.i("MSAL", "MSAL init started")
+            Log.i("MSAL", "MSAL init started with redirect URI: $redirectUri")
 
             PublicClientApplication.createSingleAccountPublicClientApplication(
                 context,
@@ -112,7 +111,7 @@ class MicrosoftAuthService(private val context: Context) {
 
                     override fun onError(exception: MsalException) {
                         Log.e("MSAL", "Error creating MSAL app", exception)
-                        _authError.value = "MSAL gagal diinisialisasi. Cek auth_config_single_account.json.\nError: ${exception.message}"
+                        _authError.value = "MSAL gagal diinisialisasi. Cek auth_config_single_account.json.\nRedirect URI: $redirectUri\nError: ${exception.message}"
                     }
                 }
             )
@@ -252,4 +251,3 @@ class MicrosoftAuthService(private val context: Context) {
         }
     }
 }
-
