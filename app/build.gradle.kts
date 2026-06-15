@@ -79,6 +79,118 @@ secrets {
   defaultPropertiesFileName = ".env.example"
 }
 
+tasks.register("patchRealtimePriceLogic") {
+  doLast {
+    val file = file("src/main/java/com/example/ui/chat/ChatViewModel.kt")
+    if (!file.exists()) return@doLast
+    var current = file.readText()
+
+    val searchStart = current.indexOf("    private fun shouldUseRealtimeSearch(messageText: String): Boolean {")
+    val searchEnd = current.indexOf("    private suspend fun handleMemoryCommand", searchStart)
+    if (searchStart >= 0 && searchEnd > searchStart) {
+      val searchReplacement = """
+    private fun shouldUseRealtimeSearch(messageText: String): Boolean {
+        val textLower = messageText.lowercase().trim()
+
+        val explicitSearchKeywords = listOf(
+            "cari", "search", "carikan", "cek", "chek", "check",
+            "berita", "news", "berita terbaru", "update terbaru",
+            "hari ini", "sekarang", "live", "real time", "realtime",
+            "viral", "trending", "positif", "negatif",
+            "sentimen", "sentiment", "kenapa naik", "kenapa turun",
+            "akan naik", "akan turun", "prediksi hari ini"
+        )
+
+        val cryptoKeywords = listOf(
+            "btc", "bitcoin", "eth", "ethereum", "crypto", "usdt",
+            "xrp", "sol", "solana", "bnb", "doge", "dogecoin",
+            "ada", "cardano", "ton", "trx", "tron", "avax",
+            "matic", "pol", "link", "ltc", "dot", "shib"
+        )
+
+        val goldKeywords = listOf("gold", "xau", "emas")
+
+        val currencyKeywords = listOf(
+            "mata uang", "kurs", "forex", "fx", "currency",
+            "usd", "idr", "eur", "gbp", "jpy", "aud", "cad", "chf",
+            "cny", "yuan", "myr", "thb", "php", "inr", "krw",
+            "rub", "aed", "sar", "dollar", "dolar", "rupiah", "dxy"
+        )
+
+        if (cryptoKeywords.any { textLower.contains(it) }) return true
+        if (goldKeywords.any { textLower.contains(it) }) return true
+        if (currencyKeywords.any { textLower.contains(it) } && explicitSearchKeywords.any { textLower.contains(it) }) return true
+        if (explicitSearchKeywords.any { textLower.contains(it) }) return true
+
+        val currentDataKeywords = listOf(
+            "cuaca", "weather", "jadwal", "schedule", "rilis terbaru",
+            "subscription", "pricing", "harga paket",
+            "status server", "down", "error hari ini"
+        )
+        return currentDataKeywords.any { textLower.contains(it) }
+    }
+      """.trimIndent() + "\n"
+      current = current.substring(0, searchStart) + searchReplacement + current.substring(searchEnd)
+    }
+
+    val marker = """                if (handleMemoryCommand(messageText, sessionId)) {
+                    _uiState.update { it.copy(isLoading = false) }
+                    return@launch
+                }
+                
+                val apiKey = settingsRepository.apiKey.first()"""
+
+    if (current.contains(marker) && !current.contains("Checking BTC realtime price")) {
+      val insert = """                if (handleMemoryCommand(messageText, sessionId)) {
+                    _uiState.update { it.copy(isLoading = false) }
+                    return@launch
+                }
+
+                if (imageUri == null && cryptoPriceRepository.isBtcUsdQuery(messageText)) {
+                    _uiState.update { it.copy(loadingText = "Checking BTC realtime price...") }
+                    val cryptoResult = cryptoPriceRepository.getBtcUsdPrice()
+                    val price = cryptoResult.getOrNull()
+                    if (price != null) {
+                        val answer = cryptoPriceRepository.formatBtcUsdAnswer(price)
+                        chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = answer))
+                        _uiState.update { it.copy(isLoading = false, loadingText = null) }
+                        return@launch
+                    } else {
+                        android.util.Log.w("ChatViewModel", "BTC realtime price failed: ${'$'}{cryptoResult.exceptionOrNull()?.message}")
+                        _uiState.update { it.copy(loadingText = null) }
+                    }
+                }
+
+                if (imageUri == null) {
+                    val fiatQuery = fiatRateRepository.parseFiatRateQuery(messageText)
+                    if (fiatQuery != null) {
+                        _uiState.update { it.copy(loadingText = "Checking realtime rate...") }
+                        val fiatResult = fiatRateRepository.getLatestRate(fiatQuery)
+                        val rate = fiatResult.getOrNull()
+                        if (rate != null) {
+                            val answer = fiatRateRepository.formatFiatRateAnswer(rate)
+                            chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = answer))
+                            _uiState.update { it.copy(isLoading = false, loadingText = null) }
+                            return@launch
+                        } else {
+                            android.util.Log.w("ChatViewModel", "Realtime rate failed: ${'$'}{fiatResult.exceptionOrNull()?.message}")
+                            _uiState.update { it.copy(loadingText = null) }
+                        }
+                    }
+                }
+                
+                val apiKey = settingsRepository.apiKey.first()"""
+      current = current.replace(marker, insert)
+    }
+
+    file.writeText(current)
+  }
+}
+
+tasks.matching { it.name == "preBuild" }.configureEach {
+  dependsOn("patchRealtimePriceLogic")
+}
+
 tasks.withType<Test> {
     systemProperty("java.awt.headless", "true")
 }
