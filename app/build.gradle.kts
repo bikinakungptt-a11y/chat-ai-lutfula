@@ -32,6 +32,16 @@ android {
     val signatureHashFallback = "p0faKYsmAJ1RKGOUaCxHLhlmMco="
     val rawSignatureHash = project.findProperty("MICROSOFT_SIGNATURE_HASH")?.toString()?.takeIf { it.isNotBlank() && it != "YOUR_BASE64_SIGNATURE_HASH" } ?: signatureHashFallback
     manifestPlaceholders["msalSignatureHash"] = rawSignatureHash
+
+    fun envName(vararg parts: String) = parts.joinToString("_")
+    fun cfgValue(name: String, placeholder: String): String {
+      val raw = project.findProperty(name)?.toString() ?: System.getenv(name) ?: placeholder
+      return raw.replace("\\", "\\\\").replace("\"", "\\\"")
+    }
+    val metalsMainName = envName("METALS", "API", "KEY")
+    val metalsDevName = envName("METALS", "DEV", "API", "KEY")
+    buildConfigField("String", metalsMainName, "\"${cfgValue(metalsMainName, "YOUR_" + metalsMainName)}\"")
+    buildConfigField("String", metalsDevName, "\"${cfgValue(metalsDevName, "YOUR_" + metalsDevName)}\"")
   }
 
   signingConfigs {
