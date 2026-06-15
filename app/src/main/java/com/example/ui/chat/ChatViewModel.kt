@@ -49,9 +49,7 @@ data class ChatUiState(
     val isLoading: Boolean = false,
     val loadingText: String? = null,
     val error: String? = null,
-    val mode: ChatMode = ChatMode.NORMAL,
-    val emailContext: String? = null,
-    val suggestedTranslationAction: String? = null
+    val mode: ChatMode = ChatMode.NORMAL
 )
 
 class ChatViewModel(
@@ -60,8 +58,6 @@ class ChatViewModel(
     private val chatRepository: ChatRepository,
     private val memoryRepository: com.example.data.MemoryRepository,
     private val localStorage: com.example.data.LocalStorage,
-    private val microsoftAuthService: com.example.data.MicrosoftAuthService,
-    private val microsoftGraphRepository: com.example.data.MicrosoftGraphRepository,
     private val okHttpClient: OkHttpClient,
     private val moshi: Moshi
 ) : ViewModel() {
@@ -141,25 +137,6 @@ class ChatViewModel(
 
     fun setMode(mode: ChatMode) {
         _uiState.update { it.copy(mode = mode) }
-    }
-
-    fun setEmailContext(context: String?) {
-        _uiState.update { it.copy(emailContext = context, suggestedTranslationAction = null) }
-        
-        if (context != null) {
-            val languageIdentifier = LanguageIdentification.getClient()
-            languageIdentifier.identifyLanguage(context)
-                .addOnSuccessListener { languageCode ->
-                    if (languageCode != "und" && languageCode != "en") {
-                        val languageName = java.util.Locale.forLanguageTag(languageCode).displayLanguage
-                        _uiState.update { it.copy(suggestedTranslationAction = "Translate from $languageName to English") }
-                    }
-                }
-        }
-    }
-
-    fun clearEmailContext() {
-        _uiState.update { it.copy(emailContext = null, suggestedTranslationAction = null) }
     }
 
     private fun shouldUseRealtimeSearch(messageText: String): Boolean {
@@ -277,66 +254,6 @@ class ChatViewModel(
 
         viewModelScope.launch(Dispatchers.IO) {
             val lowerText = messageText.lowercase()
-            val isOutlookCommand = lowerText.contains("cek inbox outlook") || lowerText.contains("cek email terbaru") || 
-                                    lowerText.contains("cari email outlook") || lowerText.contains("cari pdf outlook")
-                                    
-            if (isOutlookCommand) {
-                var sessionId = _uiState.value.currentSessionId
-                if (sessionId == null) {
-                    val title = "Outlook Query"
-                    sessionId = chatRepository.createNewSession(title)
-                    _uiState.update { it.copy(currentSessionId = sessionId) }
-                    selectSession(sessionId)
-                }
-                
-                chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "user", content = messageText))
-                
-                if (microsoftAuthService.account.value == null) {
-                    chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "Outlook belum dikonfigurasi. Buka Settings > Microsoft Outlook, isi Client ID, lalu Connect Outlook."))
-                    _uiState.update { it.copy(isLoading = false) }
-                    return@launch
-                }
-                
-                _uiState.update { it.copy(loadingText = "Fetching Outlook...") }
-                
-                if (lowerText.contains("cari email outlook")) {
-                    val query = messageText.substringAfter("outlook", "").trim().removePrefix("dari").removePrefix("tentang").trim()
-                    microsoftGraphRepository.searchEmails(query)
-                } else {
-                    microsoftGraphRepository.loadLatestEmails()
-                }
-                
-                val err = microsoftGraphRepository.error.value
-                if (err != null) {
-                    chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "Gagal mengambil data dari Outlook: $err"))
-                } else {
-                    val emails = microsoftGraphRepository.emails.value
-                    if (emails.isEmpty()) {
-                        chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "Tidak ada email ditemukan dari Outlook."))
-                    } else {
-                        var result = "Berikut hasil dari Outlook:\n\n"
-                        emails.take(5).forEach { email ->
-                            val senderName = email.sender?.emailAddress?.name ?: email.sender?.emailAddress?.address ?: "Unknown"
-                            result += "- **${email.subject ?: "(No Subject)"}** dari $senderName\n"
-                            result += "  _Preview: ${email.bodyPreview?.take(50)}..._\n"
-                            if (email.hasAttachments == true) {
-                                result += "  *(Ada lampiran)*\n"
-                            }
-                            if (!email.webLink.isNullOrBlank()) {
-                                result += "  [Buka di Browser](${email.webLink})\n"
-                            }
-                            result += "\n"
-                        }
-                        if (emails.size > 5) {
-                            result += "\n*Dan ${emails.size - 5} email lainnya.*"
-                        }
-                        chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = result))
-                    }
-                }
-                
-                _uiState.update { it.copy(isLoading = false, loadingText = null) }
-                return@launch
-            }
 
             try {
                 var sessionId = _uiState.value.currentSessionId
@@ -641,11 +558,6 @@ class ChatViewModel(
                     systemPrompt += "\n\n$searchContext"
                 }
 
-                val emailContext = _uiState.value.emailContext
-                if (emailContext != null) {
-                    systemPrompt += "\n\nThe user requested to use the following email as context:\n$emailContext"
-                }
-
                 val chatMessages = mutableListOf<com.example.network.ChatRequestMessage>()
                 chatMessages.add(com.example.network.ChatRequestMessage(role = "system", content = listOf(com.example.network.VisionContent(type = "text", text = systemPrompt))))
                 
@@ -848,15 +760,13 @@ class ChatViewModel(
         private val chatRepository: ChatRepository,
         private val memoryRepository: com.example.data.MemoryRepository,
         private val localStorage: com.example.data.LocalStorage,
-        private val microsoftAuthService: com.example.data.MicrosoftAuthService,
-        private val microsoftGraphRepository: com.example.data.MicrosoftGraphRepository,
         private val okHttpClient: OkHttpClient,
         private val moshi: Moshi
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             if (modelClass.isAssignableFrom(ChatViewModel::class.java)) {
-                return ChatViewModel(applicationContext, settingsRepository, chatRepository, memoryRepository, localStorage, microsoftAuthService, microsoftGraphRepository, okHttpClient, moshi) as T
+                return ChatViewModel(applicationContext, settingsRepository, chatRepository, memoryRepository, localStorage, okHttpClient, moshi) as T
             }
             throw IllegalArgumentException("Unknown ViewModel class")
         }

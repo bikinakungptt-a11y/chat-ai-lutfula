@@ -27,21 +27,6 @@ android {
     versionName = "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-    
-    // Fallback if not configured in .env
-    val signatureHashFallback = "p0faKYsmAJ1RKGOUaCxHLhlmMco="
-    val rawSignatureHash = project.findProperty("MICROSOFT_SIGNATURE_HASH")?.toString()?.takeIf { it.isNotBlank() && it != "YOUR_BASE64_SIGNATURE_HASH" } ?: signatureHashFallback
-    manifestPlaceholders["msalSignatureHash"] = rawSignatureHash
-
-    fun envName(vararg parts: String) = parts.joinToString("_")
-    fun cfgValue(name: String, placeholder: String): String {
-      val raw = project.findProperty(name)?.toString() ?: System.getenv(name) ?: placeholder
-      return raw.replace("\\", "\\\\").replace("\"", "\\\"")
-    }
-    val metalsMainName = envName("METALS", "API", "KEY")
-    val metalsDevName = envName("METALS", "DEV", "API", "KEY")
-    buildConfigField("String", metalsMainName, "\"${cfgValue(metalsMainName, "YOUR_" + metalsMainName)}\"")
-    buildConfigField("String", metalsDevName, "\"${cfgValue(metalsDevName, "YOUR_" + metalsDevName)}\"")
   }
 
   signingConfigs {
@@ -132,7 +117,6 @@ dependencies {
   implementation("androidx.media3:media3-exoplayer:1.4.1")
   implementation("androidx.media3:media3-ui:1.4.1")
   implementation("androidx.security:security-crypto:1.1.0-alpha06")
-  implementation(libs.msal)
   implementation(libs.mlkit.language.id)
   testImplementation(libs.androidx.compose.ui.test.junit4)
   testImplementation(libs.androidx.core)

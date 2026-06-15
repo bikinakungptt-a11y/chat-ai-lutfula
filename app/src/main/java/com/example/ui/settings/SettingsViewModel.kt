@@ -7,7 +7,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.data.SettingsRepository
-import com.example.data.MicrosoftAuthService
 import com.example.network.ChatRequest
 import com.example.network.ChatMessage
 import com.squareup.moshi.Moshi
@@ -23,7 +22,6 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import com.microsoft.identity.client.IAccount
 
 data class SettingsUiState(
     val textProvider: String = "",
@@ -39,12 +37,6 @@ data class SettingsUiState(
     val textTestError: String? = null,
     val requireValidation: Boolean = false,
     val validationError: String? = null,
-    val microsoftAccount: IAccount? = null,
-    val isMicrosoftTesting: Boolean = false,
-    val microsoftResult: String? = null,
-    val microsoftError: String? = null,
-    val microsoftClientId: String = "",
-    val microsoftTenant: String = "common",
     
     val firecrawlApiKey: String = "",
 
@@ -100,8 +92,6 @@ data class SettingsUiState(
 
 class SettingsViewModel(
     private val settingsRepository: SettingsRepository,
-    private val microsoftAuthService: MicrosoftAuthService,
-    private val microsoftGraphRepository: com.example.data.MicrosoftGraphRepository,
     private val okHttpClient: OkHttpClient,
     private val moshi: Moshi,
     private val localStorage: com.example.data.LocalStorage
@@ -113,18 +103,7 @@ class SettingsViewModel(
     private val MASKED_KEY_PLACEHOLDER = "••••••••••••••••"
 
     init {
-        _uiState.update { 
-            it.copy(
-                microsoftClientId = localStorage.getMicrosoftClientId(),
-                microsoftTenant = localStorage.getMicrosoftTenant()
-            )
-        }
         loadSettings()
-        viewModelScope.launch {
-            microsoftAuthService.account.collect { account ->
-                _uiState.update { it.copy(microsoftAccount = account) }
-            }
-        }
         viewModelScope.launch {
             settingsRepository.savedModelsList.collect { models ->
                 val currentModel = _uiState.value.modelName
@@ -203,26 +182,6 @@ class SettingsViewModel(
     fun updateApiKey(key: String) { _uiState.update { it.copy(apiKey = key, isSaved = false, validationError = null) } }
     fun updateFirecrawlApiKey(key: String) { _uiState.update { it.copy(firecrawlApiKey = key, isSaved = false) } }
     fun updateTextPath(path: String) { _uiState.update { it.copy(textPath = path, isSaved = false, validationError = null) } }
-    fun updateMicrosoftClientId(id: String) { _uiState.update { it.copy(microsoftClientId = id) } }
-    fun updateMicrosoftTenant(tenant: String) { _uiState.update { it.copy(microsoftTenant = tenant) } }
-
-    fun saveMicrosoftConfig(context: Context) {
-        val state = _uiState.value
-        val clientId = state.microsoftClientId.trim()
-        val tenant = state.microsoftTenant.trim().ifEmpty { "common" }
-        
-        _uiState.update { it.copy(microsoftClientId = clientId, microsoftTenant = tenant) }
-        
-        if (clientId.isEmpty()) {
-            Toast.makeText(context, "Microsoft Client ID wajib diisi", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        localStorage.saveMicrosoftClientId(clientId)
-        localStorage.saveMicrosoftTenant(tenant)
-        microsoftAuthService.reinitializeMsal()
-        Toast.makeText(context, "Microsoft configuration saved", Toast.LENGTH_SHORT).show()
-    }
     fun updateModelName(model: String) { 
         val ext = _uiState.value.savedModelsList.find { it.modelName == model }
         _uiState.update { it.copy(modelName = model, supportsVision = ext?.supportsVision ?: false, isSaved = false, validationError = null) }
@@ -242,39 +201,6 @@ class SettingsViewModel(
         viewModelScope.launch {
             settingsRepository.removeFirecrawlApiKey()
             _uiState.update { it.copy(firecrawlApiKey = "", isSaved = true) }
-        }
-    }
-
-    fun testMicrosoftProfile() {
-        if (_uiState.value.microsoftAccount == null) {
-            _uiState.update { it.copy(microsoftError = "Please connect Outlook account first.") }
-            return
-        }
-        _uiState.update { it.copy(isMicrosoftTesting = true, microsoftError = null, microsoftResult = null) }
-        viewModelScope.launch {
-            val result = microsoftGraphRepository.loadProfile()
-            if (microsoftGraphRepository.error.value == null) {
-                _uiState.update { it.copy(isMicrosoftTesting = false, microsoftResult = "Profile: $result") }
-            } else {
-                _uiState.update { it.copy(isMicrosoftTesting = false, microsoftError = "Profile Test Failed: ${microsoftGraphRepository.error.value}") }
-            }
-        }
-    }
-
-    fun testMicrosoftInbox() {
-        if (_uiState.value.microsoftAccount == null) {
-            _uiState.update { it.copy(microsoftError = "Please connect Outlook account first.") }
-            return
-        }
-        _uiState.update { it.copy(isMicrosoftTesting = true, microsoftError = null, microsoftResult = null) }
-        viewModelScope.launch {
-            microsoftGraphRepository.loadLatestEmails()
-            if (microsoftGraphRepository.error.value == null) {
-                val count = microsoftGraphRepository.emails.value.size
-                _uiState.update { it.copy(isMicrosoftTesting = false, microsoftResult = "Successfully fetched $count recent emails.") }
-            } else {
-                _uiState.update { it.copy(isMicrosoftTesting = false, microsoftError = "Inbox Test Failed: ${microsoftGraphRepository.error.value}") }
-            }
         }
     }
 
@@ -584,66 +510,12 @@ class SettingsViewModel(
         }
     }
     
-    fun signInMicrosoft(activity: Activity, context: Context) {
-        viewModelScope.launch {
-            // Auto save config first if there are any changes
-            val state = _uiState.value
-            val clientId = state.microsoftClientId.trim()
-            val tenant = state.microsoftTenant.trim().ifEmpty { "common" }
-            
-            if (clientId.isEmpty()) {
-                Toast.makeText(context, "Microsoft Client ID wajib diisi", Toast.LENGTH_SHORT).show()
-                return@launch
-            }
-
-            // Always update config
-            localStorage.saveMicrosoftClientId(clientId)
-            localStorage.saveMicrosoftTenant(tenant)
-            microsoftAuthService.reinitializeMsal()
-            
-            _uiState.update { it.copy(isMicrosoftTesting = true, microsoftError = null, microsoftResult = null) }
-            
-            // Wait for MSAL to initialize (up to 3 seconds)
-            for (i in 0..30) {
-                if (microsoftAuthService.authError.value != null || microsoftAuthService.isMsalAppInitialized()) {
-                    break
-                }
-                kotlinx.coroutines.delay(100)
-            }
-            
-            val err = microsoftAuthService.authError.value
-            if (err != null) {
-                _uiState.update { it.copy(isMicrosoftTesting = false, microsoftError = err) }
-                Toast.makeText(context, "MSAL Error: $err", Toast.LENGTH_LONG).show()
-                return@launch
-            }
-            
-            val result = microsoftAuthService.acquireTokenInteractive(activity)
-            result.onFailure { exception ->
-                _uiState.update { it.copy(isMicrosoftTesting = false, microsoftError = exception.message ?: "Login gagal") }
-                Toast.makeText(context, exception.message ?: "Login gagal", Toast.LENGTH_LONG).show()
-            }.onSuccess { 
-                _uiState.update { it.copy(isMicrosoftTesting = false, microsoftResult = "Berhasil koneksi ke Outlook!") }
-                Toast.makeText(context, "Outlook connected", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    fun signOutMicrosoft() {
-        viewModelScope.launch {
-            microsoftAuthService.signOut()
-            _uiState.update { it.copy(microsoftResult = "Berhasil disconnect dari Outlook", microsoftError = null) }
-        }
-    }
-
     fun resetSaveState() {
         _uiState.update { it.copy(isSaved = false, isCreatePhotoSaved = false, isEditPhotoSaved = false, isPhotoVideoSaved = false) }
     }
 
     class Factory(
         private val settingsRepository: SettingsRepository,
-        private val microsoftAuthService: MicrosoftAuthService,
-        private val microsoftGraphRepository: com.example.data.MicrosoftGraphRepository,
         private val okHttpClient: OkHttpClient,
         private val moshi: Moshi,
         private val localStorage: com.example.data.LocalStorage
@@ -651,7 +523,7 @@ class SettingsViewModel(
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             if (modelClass.isAssignableFrom(SettingsViewModel::class.java)) {
-                return SettingsViewModel(settingsRepository, microsoftAuthService, microsoftGraphRepository, okHttpClient, moshi, localStorage) as T
+                return SettingsViewModel(settingsRepository, okHttpClient, moshi, localStorage) as T
             }
             throw IllegalArgumentException("Unknown ViewModel class")
         }

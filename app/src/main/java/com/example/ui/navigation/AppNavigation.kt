@@ -25,14 +25,12 @@ import com.example.ui.chat.ChatScreen
 import com.example.ui.chat.ChatViewModel
 import com.example.ui.settings.SettingsScreen
 import com.example.ui.settings.SettingsViewModel
-import com.example.data.GraphEmail
 
 sealed class Screen(val route: String, val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     object Welcome : Screen("welcome", "Welcome", Icons.AutoMirrored.Filled.Chat)
     object Chat : Screen("chat", "Chat", Icons.AutoMirrored.Filled.Chat)
     object Settings : Screen("settings", "Settings", Icons.Filled.Settings)
     object Studio : Screen("studio", "AI Studio", Icons.Filled.Movie)
-    object Outlook : Screen("outlook", "Outlook", Icons.Filled.Email)
 }
 
 @Composable
@@ -50,8 +48,6 @@ fun AppNavigation() {
             chatRepository,
             AppContainer.getMemoryRepository(context),
             AppContainer.getLocalStorage(context),
-            AppContainer.getMicrosoftAuthService(context),
-            AppContainer.getMicrosoftGraphRepository(context),
             AppContainer.okHttpClient,
             AppContainer.moshi
         )
@@ -59,8 +55,6 @@ fun AppNavigation() {
     val settingsViewModel: SettingsViewModel = viewModel(
         factory = SettingsViewModel.Factory(
             settingsRepository,
-            AppContainer.getMicrosoftAuthService(context),
-            AppContainer.getMicrosoftGraphRepository(context),
             AppContainer.okHttpClient,
             AppContainer.moshi,
             AppContainer.getLocalStorage(context)
@@ -90,8 +84,7 @@ fun AppNavigation() {
                 ChatScreen(
                     viewModel = chatViewModel,
                     onNavigateToSettings = { navController.navigate(Screen.Settings.route) },
-                    onNavigateToStudio = { navController.navigate(Screen.Studio.route) },
-                    onNavigateToOutlook = { navController.navigate(Screen.Outlook.route) }
+                    onNavigateToStudio = { navController.navigate(Screen.Studio.route) }
                 )
             }
             composable(Screen.Settings.route) {
@@ -111,32 +104,6 @@ fun AppNavigation() {
                 com.example.ui.studio.StudioScreen(
                     viewModel = studioViewModel,
                     onNavigateBack = { navController.popBackStack() }
-                )
-            }
-            composable(Screen.Outlook.route) {
-                val outlookViewModel: com.example.ui.outlook.OutlookViewModel = viewModel(
-                    factory = com.example.ui.outlook.OutlookViewModel.Factory(
-                        AppContainer.getMicrosoftGraphRepository(context),
-                        AppContainer.getMicrosoftAuthService(context)
-                    )
-                )
-                com.example.ui.outlook.OutlookScreen(
-                    viewModel = outlookViewModel,
-                    onNavigateBack = { navController.popBackStack() },
-                    onAskAi = { email ->
-                        val sender = email.sender?.emailAddress?.name ?: email.sender?.emailAddress?.address ?: "Unknown Sender"
-                        val subject = email.subject ?: "(No Subject)"
-                        val date = email.receivedDateTime ?: "Unknown Date"
-                        val body = email.bodyPreview ?: ""
-                        
-                        val contextText = "Sender: $sender\nSubject: $subject\nDate: $date\n\nBody Preview:\n$body"
-                        
-                        chatViewModel.setEmailContext(contextText)
-                        
-                        navController.navigate(Screen.Chat.route) {
-                            popUpTo(Screen.Outlook.route) { inclusive = true }
-                        }
-                    }
                 )
             }
         }

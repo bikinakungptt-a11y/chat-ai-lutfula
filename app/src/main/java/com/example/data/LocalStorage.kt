@@ -23,21 +23,4 @@ class LocalStorage(context: Context) {
     fun getInstruction(): String {
         return prefs.getString("custom_instruction", "") ?: ""
     }
-
-    fun getMicrosoftClientId(): String {
-        return prefs.getString("microsoft_client_id", "") ?: ""
-    }
-
-    fun saveMicrosoftClientId(clientId: String) {
-        prefs.edit().putString("microsoft_client_id", clientId).apply()
-    }
-
-    fun getMicrosoftTenant(): String {
-        return prefs.getString("microsoft_tenant", "common") ?: "common"
-    }
-
-    fun saveMicrosoftTenant(tenant: String) {
-        val t = if (tenant.isBlank()) "common" else tenant
-        prefs.edit().putString("microsoft_tenant", t).apply()
-    }
 }
