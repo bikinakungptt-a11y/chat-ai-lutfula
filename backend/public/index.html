@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chat AI Backend</title>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; background: #0b1020; color: #fff; display: grid; min-height: 100vh; place-items: center; }
+    main { width: min(680px, calc(100% - 32px)); background: #141a2c; border: 1px solid #2d3655; border-radius: 18px; padding: 24px; }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    p { color: #b7c0d8; line-height: 1.5; }
+    code, a { color: #78a6ff; }
+    ul { line-height: 1.8; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Chat AI Backend aktif</h1>
+    <p>Backend ini untuk APK Kotlin. API key Firecrawl dan API Ninjas disimpan di Vercel Environment Variables, bukan di APK.</p>
+    <p>Test endpoint:</p>
+    <ul>
+      <li><a href="/api/health">/api/health</a></li>
+      <li><code>/api/search?q=btc</code></li>
+      <li><code>/api/holiday?date=2026-06-15&amp;country=ID</code></li>
+      <li><code>/api/is-working-day?date=2026-06-15&amp;country=ID</code></li>
+    </ul>
+  </main>
+</body>
+</html>
