@@ -3,11 +3,16 @@ package com.example.ui.chat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.data.AppGuide
+import com.example.data.ChatRepository
+import com.example.data.ChatSessionEntity
+import com.example.data.CryptoPriceRepository
+import com.example.data.MessageEntity
 import com.example.data.SettingsRepository
-import com.example.network.ChatMessage
 import com.example.network.ChatRequest
 import com.example.network.ChatResponse
 import com.example.network.ReasoningConfig
+import com.google.mlkit.nl.languageid.LanguageIdentification
 import com.squareup.moshi.Moshi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,12 +26,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
-import com.example.data.AppGuide
-import com.example.data.ChatSessionEntity
-import com.example.data.ChatRepository
-import com.example.data.MessageEntity
-import kotlinx.coroutines.flow.map
-import com.google.mlkit.nl.languageid.LanguageIdentification
 
 enum class ChatMode {
     NORMAL, THINK, THINK_DEEPLY
@@ -70,6 +69,7 @@ class ChatViewModel(
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
     private var messageJob: kotlinx.coroutines.Job? = null
+    private val cryptoPriceRepository = CryptoPriceRepository(okHttpClient)
 
     init {
         viewModelScope.launch {
@@ -108,13 +108,15 @@ class ChatViewModel(
             chatRepository.getMessagesForSession(sessionId).collect { messages ->
                 _uiState.update { state ->
                     if (state.currentSessionId == sessionId) {
-                         state.copy(messages = messages.map { UiMessage(it.id.toString(), it.role, it.content, it.imageUri) })
-                    } else state
+                        state.copy(messages = messages.map { UiMessage(it.id.toString(), it.role, it.content, it.imageUri) })
+                    } else {
+                        state
+                    }
                 }
             }
         }
     }
-    
+
     fun createNewSession() {
         _uiState.update { it.copy(currentSessionId = null, messages = emptyList()) }
         messageJob?.cancel()
@@ -123,10 +125,8 @@ class ChatViewModel(
     fun deleteSession(sessionId: Long) {
         viewModelScope.launch(Dispatchers.IO) {
             chatRepository.deleteSession(sessionId)
-            
-            // If the deleted session is the currently active one
+
             if (_uiState.value.currentSessionId == sessionId) {
-                // Find remaining sessions, excluding the deleted one
                 val remainingSessions = _uiState.value.sessions.filter { it.id != sessionId }
                 if (remainingSessions.isNotEmpty()) {
                     selectSession(remainingSessions.first().id)
@@ -143,7 +143,7 @@ class ChatViewModel(
 
     fun setEmailContext(context: String?) {
         _uiState.update { it.copy(emailContext = context, suggestedTranslationAction = null) }
-        
+
         if (context != null) {
             val languageIdentifier = LanguageIdentification.getClient()
             languageIdentifier.identifyLanguage(context)
@@ -162,15 +162,15 @@ class ChatViewModel(
 
     private fun shouldUseRealtimeSearch(messageText: String): Boolean {
         val keywords = listOf(
-            "cari", "search", "carikan", "cek", "berita terbaru", "terbaru", 
-            "update terbaru", "hari ini", "sekarang", "live", "real time", 
-            "realtime", "viral", "trending", "sedang viral", "sosial media", 
-            "twitter", "x", "tiktok", "instagram", "youtube", "harga", "price", 
-            "kurs", "btc", "bitcoin", "eth", "ethereum", "crypto", "saham", 
+            "cari", "search", "carikan", "cek", "berita terbaru", "terbaru",
+            "update terbaru", "hari ini", "sekarang", "live", "real time",
+            "realtime", "viral", "trending", "sedang viral", "sosial media",
+            "twitter", "x", "tiktok", "instagram", "youtube", "harga", "price",
+            "kurs", "btc", "bitcoin", "eth", "ethereum", "crypto", "saham",
             "ihsg", "usd", "idr"
         )
         val textLower = messageText.lowercase()
-        return keywords.any { keyword -> 
+        return keywords.any { keyword ->
             Regex("\\b${Regex.escape(keyword)}\\b").containsMatchIn(textLower)
         }
     }
@@ -178,7 +178,7 @@ class ChatViewModel(
     private suspend fun handleMemoryCommand(messageText: String, sessionId: Long): Boolean {
         val textLower = messageText.trim().lowercase()
         val memoryEnabled = settingsRepository.memoryEnabled.first()
-        
+
         if (textLower == "memory off") {
             settingsRepository.saveMemoryEnabled(false)
             chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "Memory is now disabled."))
@@ -218,7 +218,7 @@ class ChatViewModel(
                 return saveMemoryIfSafe(content, sessionId, true)
             }
         }
-        
+
         val deletePrefixes = listOf("lupakan:")
         for (prefix in deletePrefixes) {
             if (textLower.startsWith(prefix)) {
@@ -235,7 +235,7 @@ class ChatViewModel(
     private suspend fun saveMemoryIfSafe(content: String, sessionId: Long, isExplicit: Boolean): Boolean {
         val lower = content.lowercase()
         val criticalSecrets = listOf("password", "api key", "apikey", "token", "secret", "address", "alamat", "phone", "telepon", "bank", "payment", "credit card")
-        
+
         if (criticalSecrets.any { lower.contains(it) }) {
             chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "⚠️ I am not allowed to remember sensitive data like API keys, passwords, addresses, and banking info."))
             return true
@@ -265,7 +265,7 @@ class ChatViewModel(
 
         val previousMessagesSnapshot = _uiState.value.messages.toList()
 
-        _uiState.update { 
+        _uiState.update {
             it.copy(
                 isLoading = true,
                 loadingText = null,
@@ -275,9 +275,9 @@ class ChatViewModel(
 
         viewModelScope.launch(Dispatchers.IO) {
             val lowerText = messageText.lowercase()
-            val isOutlookCommand = lowerText.contains("cek inbox outlook") || lowerText.contains("cek email terbaru") || 
-                                    lowerText.contains("cari email outlook") || lowerText.contains("cari pdf outlook")
-                                    
+            val isOutlookCommand = lowerText.contains("cek inbox outlook") || lowerText.contains("cek email terbaru") ||
+                lowerText.contains("cari email outlook") || lowerText.contains("cari pdf outlook")
+
             if (isOutlookCommand) {
                 var sessionId = _uiState.value.currentSessionId
                 if (sessionId == null) {
@@ -286,24 +286,24 @@ class ChatViewModel(
                     _uiState.update { it.copy(currentSessionId = sessionId) }
                     selectSession(sessionId)
                 }
-                
+
                 chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "user", content = messageText))
-                
+
                 if (microsoftAuthService.account.value == null) {
                     chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "Outlook belum dikonfigurasi. Buka Settings > Microsoft Outlook, isi Client ID, lalu Connect Outlook."))
                     _uiState.update { it.copy(isLoading = false) }
                     return@launch
                 }
-                
+
                 _uiState.update { it.copy(loadingText = "Fetching Outlook...") }
-                
+
                 if (lowerText.contains("cari email outlook")) {
                     val query = messageText.substringAfter("outlook", "").trim().removePrefix("dari").removePrefix("tentang").trim()
                     microsoftGraphRepository.searchEmails(query)
                 } else {
                     microsoftGraphRepository.loadLatestEmails()
                 }
-                
+
                 val err = microsoftGraphRepository.error.value
                 if (err != null) {
                     chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "Gagal mengambil data dari Outlook: $err"))
@@ -331,7 +331,7 @@ class ChatViewModel(
                         chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = result))
                     }
                 }
-                
+
                 _uiState.update { it.copy(isLoading = false, loadingText = null) }
                 return@launch
             }
@@ -340,20 +340,37 @@ class ChatViewModel(
                 var sessionId = _uiState.value.currentSessionId
                 if (sessionId == null) {
                     val title = if (messageText.isNotEmpty()) {
-                         if (messageText.length > 20) messageText.substring(0, 20) + "..." else messageText
-                    } else "Photo Attached"
+                        if (messageText.length > 20) messageText.substring(0, 20) + "..." else messageText
+                    } else {
+                        "Photo Attached"
+                    }
                     sessionId = chatRepository.createNewSession(title)
                     _uiState.update { it.copy(currentSessionId = sessionId) }
-                    selectSession(sessionId) // to start observing messages for the new session
+                    selectSession(sessionId)
                 }
-                
+
                 chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "user", content = messageText, imageUri = imageUri))
-                
+
                 if (handleMemoryCommand(messageText, sessionId)) {
                     _uiState.update { it.copy(isLoading = false) }
                     return@launch
                 }
-                
+
+                if (imageUri == null && cryptoPriceRepository.isBtcUsdQuery(messageText)) {
+                    _uiState.update { it.copy(loadingText = "Checking BTC price...") }
+                    val cryptoResult = cryptoPriceRepository.getBtcUsdPrice()
+                    val price = cryptoResult.getOrNull()
+                    if (price != null) {
+                        val answer = cryptoPriceRepository.formatBtcUsdAnswer(price)
+                        chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = answer))
+                        _uiState.update { it.copy(isLoading = false, loadingText = null) }
+                        return@launch
+                    } else {
+                        android.util.Log.w("ChatViewModel", "CoinGecko price check failed: ${cryptoResult.exceptionOrNull()?.message}")
+                        _uiState.update { it.copy(loadingText = null) }
+                    }
+                }
+
                 val apiKey = settingsRepository.apiKey.first()
                 val baseUrl = settingsRepository.baseUrl.first()
                 val path = settingsRepository.textPath.first()
@@ -363,7 +380,7 @@ class ChatViewModel(
                 val supportsVision = aiModels.find { it.modelName == modelName }?.supportsVision ?: false
 
                 val firecrawlKey = if (prefFirecrawlKey.isNotBlank()) prefFirecrawlKey else com.example.BuildConfig.FIRECRAWL_API_KEY
-                
+
                 android.util.Log.d("ChatViewModel", "Firecrawl configured: ${firecrawlKey.isNotBlank() && firecrawlKey != "\"YOUR_FIRECRAWL_API_KEY\"" && firecrawlKey != "YOUR_FIRECRAWL_API_KEY"}")
                 android.util.Log.d("ChatViewModel", "Firecrawl key length: ${firecrawlKey.length}")
 
@@ -379,13 +396,13 @@ class ChatViewModel(
                     }
                     return@launch
                 }
-                
+
                 var searchContext = ""
                 var searchLinks = ""
-                
+
                 val urlsInMessage = Regex("(https?://[\\w-]+(\\.[\\w-]+)+(/([\\w- ./?%&=]*)?)?)").findAll(messageText).map { it.value }.toList()
                 val useSearch = shouldUseRealtimeSearch(messageText) && urlsInMessage.isEmpty()
-                
+
                 if (urlsInMessage.isNotEmpty()) {
                     _uiState.update { it.copy(isLoading = true, loadingText = "Checking website...") }
                     if (firecrawlKey.isBlank() || firecrawlKey == "\"YOUR_FIRECRAWL_API_KEY\"" || firecrawlKey == "YOUR_FIRECRAWL_API_KEY") {
@@ -395,21 +412,21 @@ class ChatViewModel(
                         try {
                             val scrapeAdapter = moshi.adapter(com.example.network.FirecrawlScrapeRequest::class.java)
                             val fRequestBody = scrapeAdapter.toJson(com.example.network.FirecrawlScrapeRequest(url = scrapeUrl)).toRequestBody("application/json; charset=utf-8".toMediaType())
-                            
+
                             val fRequest = Request.Builder()
                                 .url("https://api.firecrawl.dev/v1/scrape")
                                 .addHeader("Authorization", "Bearer $firecrawlKey")
                                 .addHeader("Content-Type", "application/json")
                                 .post(fRequestBody)
                                 .build()
-                                
+
                             val fResponse = okHttpClient.newCall(fRequest).execute()
                             val fResponseStr = fResponse.body?.string()
-                            
+
                             if (fResponse.isSuccessful && fResponseStr != null) {
                                 val fResponseAdapter = moshi.adapter(com.example.network.FirecrawlScrapeResponse::class.java)
                                 val fResult = fResponseAdapter.fromJson(fResponseStr)
-                                
+
                                 val markdown = fResult?.data?.markdown
                                 if (!markdown.isNullOrEmpty()) {
                                     val safeMarkdown = if (markdown.length > 10000) markdown.substring(0, 10000) + "...\n[Content Truncated]" else markdown
@@ -435,27 +452,27 @@ class ChatViewModel(
                             val searchAdapter = moshi.adapter(com.example.network.FirecrawlSearchRequest::class.java)
                             val firecrawlRequest = com.example.network.FirecrawlSearchRequest(query = messageText)
                             val firecrawlBody = searchAdapter.toJson(firecrawlRequest).toRequestBody("application/json; charset=utf-8".toMediaType())
-                            
+
                             val fRequest = Request.Builder()
                                 .url("https://api.firecrawl.dev/v1/search")
                                 .addHeader("Authorization", "Bearer $firecrawlKey")
                                 .addHeader("Content-Type", "application/json")
                                 .post(firecrawlBody)
                                 .build()
-                                
+
                             val fResponse = okHttpClient.newCall(fRequest).execute()
                             val fResponseStr = fResponse.body?.string()
-                            
+
                             if (fResponse.isSuccessful && fResponseStr != null) {
                                 val fResponseAdapter = moshi.adapter(com.example.network.FirecrawlSearchResponse::class.java)
                                 val fResult = fResponseAdapter.fromJson(fResponseStr)
-                                
+
                                 val results = fResult?.data
                                 if (!results.isNullOrEmpty()) {
                                     val topResults = results.take(3)
                                     searchContext = "Use the following real-time search results to answer the user's query:\n\n" +
-                                            topResults.joinToString("\n\n") { "- Title: ${it.title}\n  Description: ${it.description}\n  URL: ${it.url}" }
-                                            
+                                        topResults.joinToString("\n\n") { "- Title: ${it.title}\n  Description: ${it.description}\n  URL: ${it.url}" }
+
                                     searchLinks = "\n\nSources:\n" + topResults.joinToString("\n") { "• ${it.title ?: "Link"}\n  ${it.url}" }
                                 }
                             } else {
@@ -469,47 +486,45 @@ class ChatViewModel(
                     }
                 }
 
-                // Construct full endpoint URL
                 val baseUrlCleaned = baseUrl.trimEnd('/')
                 val pathCleaned = if (path.startsWith("/")) path else "/$path"
                 val endpoint = "$baseUrlCleaned$pathCleaned"
 
-                // Prepare system prompt based on mode
                 val mode = _uiState.value.mode
                 var systemPrompt = when (mode) {
                     ChatMode.NORMAL -> "You are a helpful AI assistant. Provide fast, simple, and direct answers."
                     ChatMode.THINK -> "You are a helpful AI assistant. Approach tasks with careful reasoning and thorough checking. Explain your thought process."
                     ChatMode.THINK_DEEPLY -> "You are a helpful AI assistant. Provide deeper analysis, detailed debugging, and exhaustive step-by-step reasoning. You are better for coding and complex tasks."
                 }
-                
+
                 if (langPref == "id") {
                     systemPrompt += "\n\nAlways respond in Bahasa Indonesia. Use clear, simple Indonesian unless the user asks for another language."
                 }
-                
+
                 systemPrompt += "\n\n" + AppGuide.TEXT
-                
+
                 if (memoryEnabled) {
                     val allMemories = memoryRepository.getAllMemories()
                     val queryWords = messageText.lowercase().split("\\s+".toRegex()).filter { it.length > 2 }
-                    
+
                     val scoredMemories = allMemories.map { mem ->
                         val memLower = mem.content.lowercase()
                         val score = queryWords.count { memLower.contains(it) }
                         mem to score
                     }.sortedByDescending { it.second }
-                    
+
                     val relevantMemories = if (scoredMemories.any { it.second > 0 }) {
-                         scoredMemories.filter { it.second > 0 }.take(10).map { it.first }
+                        scoredMemories.filter { it.second > 0 }.take(10).map { it.first }
                     } else {
-                         allMemories.take(5)
+                        allMemories.take(5)
                     }
 
                     if (relevantMemories.isNotEmpty()) {
-                        systemPrompt += "\n\nUser memory:\n" + relevantMemories.joinToString("\n") { "- ${it.content}" } + 
-                                        "\nUse these memories only when relevant. Do not mention memory unless the user asks."
+                        systemPrompt += "\n\nUser memory:\n" + relevantMemories.joinToString("\n") { "- ${it.content}" } +
+                            "\nUse these memories only when relevant. Do not mention memory unless the user asks."
                     }
                 }
-                
+
                 if (searchContext.isNotEmpty()) {
                     systemPrompt += "\n\n$searchContext"
                 }
@@ -521,8 +536,7 @@ class ChatViewModel(
 
                 val chatMessages = mutableListOf<com.example.network.ChatRequestMessage>()
                 chatMessages.add(com.example.network.ChatRequestMessage(role = "system", content = listOf(com.example.network.VisionContent(type = "text", text = systemPrompt))))
-                
-                // Track if image or file sending failed
+
                 var attachmentSendFailedMsg: String? = null
                 var hasAnyImage = false
 
@@ -531,7 +545,7 @@ class ChatViewModel(
                     if (!attachmentUriStr.isNullOrEmpty()) {
                         val uri = android.net.Uri.parse(attachmentUriStr)
                         val mimeType = applicationContext.contentResolver.getType(uri) ?: ""
-                        
+
                         if (mimeType.startsWith("image/")) {
                             hasAnyImage = true
                             val b64 = uriToBase64(attachmentUriStr)
@@ -542,14 +556,14 @@ class ChatViewModel(
                                 if (isNew) {
                                     attachmentSendFailedMsg = "Gagal memproses/mengirim gambar. Harap periksa izin akses atau gambar tidak valid."
                                 }
-                                parts.add(com.example.network.VisionContent(type = "text", text = content)) // fallback to text only for old messages if permission lost
+                                parts.add(com.example.network.VisionContent(type = "text", text = content))
                             }
                         } else {
                             var fileText: String? = null
                             try {
                                 applicationContext.contentResolver.openInputStream(uri)?.use { stream ->
                                     val size = stream.available()
-                                    if (size < 5 * 1024 * 1024) { // Max 5MB for text extraction inline
+                                    if (size < 5 * 1024 * 1024) {
                                         fileText = stream.bufferedReader().readText()
                                     } else {
                                         fileText = "File terlalu besar untuk dibaca langsung."
@@ -558,7 +572,7 @@ class ChatViewModel(
                             } catch (e: Exception) {
                                 android.util.Log.e("ChatViewModel", "Error reading file", e)
                             }
-                            
+
                             if (fileText != null) {
                                 if (mimeType.startsWith("text/") || mimeType.contains("json") || mimeType.contains("csv")) {
                                     parts.add(com.example.network.VisionContent(type = "text", text = "$content\n\n[Attached File Content]:\n$fileText"))
@@ -580,18 +594,16 @@ class ChatViewModel(
                     }
                     com.example.network.ChatRequestMessage(role = role, content = parts)
                 }
-                
-                // Map existing messages
+
                 previousMessagesSnapshot.filter { !it.content.startsWith("⚠️") }.forEach {
                     chatMessages.add(makeMessage(it.role, it.content, it.imageUri, false))
                 }
-                
+
                 val localInstruction = localStorage.getInstruction()
                 if (localInstruction.isNotEmpty()) {
                     chatMessages.add(com.example.network.ChatRequestMessage(role = "system", content = listOf(com.example.network.VisionContent(type = "text", text = "CRITICAL USER PREFERENCE (ALWAYS FOLLOW THIS IN YOUR NEXT RESPONSE):\n$localInstruction"))))
                 }
 
-                // Manually append the latest user message
                 chatMessages.add(makeMessage("user", messageText, imageUri, true))
 
                 if (attachmentSendFailedMsg != null) {
@@ -603,14 +615,14 @@ class ChatViewModel(
                     }
                     return@launch
                 }
-                
+
                 if (hasAnyImage && !supportsVision) {
-                   chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "⚠️ Model ini tidak mendukung membaca gambar. Pilih model vision."))
-                   _uiState.update { it.copy(isLoading = false, error = "Model ini tidak mendukung membaca gambar. Pilih model vision.") }
-                   return@launch
+                    chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "⚠️ Model ini tidak mendukung membaca gambar. Pilih model vision."))
+                    _uiState.update { it.copy(isLoading = false, error = "Model ini tidak mendukung membaca gambar. Pilih model vision.") }
+                    return@launch
                 }
 
-                val enableReasoningParameter = true // Settings flag
+                val enableReasoningParameter = true
 
                 val reasoning = if (enableReasoningParameter) {
                     when (mode) {
@@ -618,7 +630,9 @@ class ChatViewModel(
                         ChatMode.THINK_DEEPLY -> ReasoningConfig("high")
                         ChatMode.NORMAL -> null
                     }
-                } else null
+                } else {
+                    null
+                }
 
                 val requestBody = ChatRequest(
                     model = modelName,
@@ -643,7 +657,7 @@ class ChatViewModel(
                 if (response.isSuccessful && responseBodyStr != null) {
                     val responseAdapter = moshi.adapter(ChatResponse::class.java)
                     val chatResponse = responseAdapter.fromJson(responseBodyStr)
-                    
+
                     if (chatResponse?.error != null) {
                         _uiState.update {
                             it.copy(
@@ -658,9 +672,9 @@ class ChatViewModel(
                         } else {
                             assistantReply
                         }
-                        
+
                         chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = finalReply))
-                        
+
                         _uiState.update {
                             it.copy(isLoading = false)
                         }
@@ -677,7 +691,6 @@ class ChatViewModel(
                         it.copy(isLoading = false, error = errorMsg)
                     }
                 }
-
             } catch (e: IOException) {
                 _uiState.update {
                     it.copy(
@@ -706,9 +719,11 @@ class ChatViewModel(
             inputStream?.close()
             if (bytes != null) {
                 val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.DEFAULT or android.util.Base64.NO_WRAP)
-                var mimeType = resolver.getType(uri) ?: "image/jpeg"
+                val mimeType = resolver.getType(uri) ?: "image/jpeg"
                 "data:$mimeType;base64,$base64"
-            } else null
+            } else {
+                null
+            }
         } catch (e: Exception) {
             android.util.Log.e("ChatViewModel", "Error converting image to base64", e)
             null
