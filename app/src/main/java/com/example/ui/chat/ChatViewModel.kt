@@ -395,9 +395,16 @@ class ChatViewModel(
                 
                 if (isGoldQuery) {
                     _uiState.update { it.copy(isLoading = true, loadingText = "Fetching Metals API...") }
-                    val metalsKey = com.example.BuildConfig.METALS_API_KEY
+                    var metalsKey = com.example.BuildConfig.METALS_API_KEY
                     if (metalsKey.isBlank() || metalsKey == "YOUR_METALS_API_KEY") {
-                        priceApiError += "API harga realtime gagal: METALS_API_KEY not configured.\n"
+                        metalsKey = com.example.BuildConfig.METALS_DEV_API_KEY
+                    }
+
+                    if (metalsKey.isBlank() || metalsKey == "YOUR_METALS_DEV_API_KEY" || metalsKey == "YOUR_METALS_API_KEY") {
+                        val errMsg = "API harga realtime gagal: METALS_API_KEY/METALS_DEV_API_KEY not configured."
+                        chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = errMsg))
+                        _uiState.update { it.copy(isLoading = false, loadingText = null) }
+                        return@launch
                     } else {
                         try {
                             val request = okhttp3.Request.Builder()
@@ -406,13 +413,37 @@ class ChatViewModel(
                             val response = okHttpClient.newCall(request).execute()
                             val body = response.body?.string()
                             if (response.isSuccessful && body != null) {
-                                priceApiData += "Metals.dev (Base USD, Troy Ounce): $body\n"
-                                priceApiSuccess = true
+                                val json = org.json.JSONObject(body)
+                                val metals = json.optJSONObject("metals") ?: json.optJSONObject("rates")?.optJSONObject("metals") ?: json.optJSONObject("rates")
+                                val rates = json.optJSONObject("rates")
+                                var price = 0.0
+                                if (metals != null && metals.has("gold")) {
+                                    price = metals.optDouble("gold")
+                                } else if (metals != null && metals.has("XAU")) {
+                                    price = metals.optDouble("XAU")
+                                } else if (rates != null && rates.has("gold")) {
+                                    price = rates.optDouble("gold")
+                                } else if (rates != null && rates.has("XAU")) {
+                                    price = rates.optDouble("XAU")
+                                }
+                                
+                                val priceFormatted = if (price > 0) String.format("%.2f", price) else "N/A"
+                                val finalStr = "Harga XAU realtime:\n1 XAU = $$priceFormatted\nSumber: metals.dev realtime API"
+                                
+                                chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = finalStr))
+                                _uiState.update { it.copy(isLoading = false, loadingText = null) }
+                                return@launch
                             } else {
-                                priceApiError += "API harga realtime gagal: Metals API ${response.code}\n"
+                                val errMsg = "API harga realtime gagal: Metals API ${response.code}\nResponse: $body"
+                                chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = errMsg))
+                                _uiState.update { it.copy(isLoading = false, loadingText = null) }
+                                return@launch
                             }
                         } catch(e: Exception) {
-                            priceApiError += "API harga realtime gagal: Metals API ${e.message}\n"
+                            val errMsg = "API harga realtime gagal: Metals API ${e.message}"
+                            chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = errMsg))
+                            _uiState.update { it.copy(isLoading = false, loadingText = null) }
+                            return@launch
                         }
                     }
                 }
