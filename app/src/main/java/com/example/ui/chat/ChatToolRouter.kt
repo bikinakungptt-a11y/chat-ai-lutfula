@@ -14,17 +14,6 @@ import java.util.TimeZone
 
 private const val BACKEND_BASE_URL = "https://chat-ai-lutfula.vercel.app"
 
-/**
- * Tool Router untuk ChatViewModel.
- *
- * Tugasnya memilih tool/backend yang tepat sebelum pesan dikirim ke model AI:
- * - URL/link -> backend /api/read-url
- * - Search/berita/web -> backend /api/search
- * - Tanggal merah/libur -> backend /api/holiday
- * - Crypto -> CoinGecko repository lokal
- *
- * API key Firecrawl dan API Ninjas tetap aman di backend, bukan di APK.
- */
 class ChatToolRouter(
     private val okHttpClient: OkHttpClient,
     private val cryptoPriceRepository: com.example.data.CryptoPriceRepository,
@@ -37,6 +26,7 @@ class ChatToolRouter(
         when {
             urls.isNotEmpty() -> readUrl(urls.first())
             isHolidayQuery(textLower) -> checkHoliday(textLower)
+            isMetalsQuery(textLower) -> checkMetals(textLower)
             isCryptoQuery(textLower) -> checkCrypto(textLower)
             shouldUseRealtimeSearch(textLower) -> search(messageText)
             else -> ChatToolResult.none()
@@ -69,6 +59,11 @@ class ChatToolRouter(
 
     private fun isCryptoQuery(textLower: String): Boolean {
         return Regex("\\b(btc|bitcoin|eth|ethereum|sol|solana|bnb|xrp|ripple|doge|dogecoin|usdt|tether)\\b")
+            .containsMatchIn(textLower)
+    }
+
+    private fun isMetalsQuery(textLower: String): Boolean {
+        return Regex("\\b(emas|gold|xau|perak|silver|xag|platinum|xpt|palladium|xpd|logam|metals?)\\b")
             .containsMatchIn(textLower)
     }
 
@@ -196,6 +191,39 @@ class ChatToolRouter(
             )
         } catch (e: Exception) {
             ChatToolResult.error("CRYPTO", "Backend realtime belum tersedia atau gagal mengambil data.")
+        }
+    }
+
+    private suspend fun checkMetals(textLower: String): ChatToolResult {
+        return try {
+            val request = Request.Builder()
+                .url("$BACKEND_BASE_URL/api/metals?currency=USD&unit=toz")
+                .get()
+                .build()
+
+            okHttpClient.newCall(request).execute().use { response ->
+                val responseStr = response.body?.string().orEmpty()
+                if (!response.isSuccessful || responseStr.isBlank()) {
+                    return ChatToolResult.error("METALS", "Backend metals belum tersedia atau gagal mengambil data.")
+                }
+
+                val json = JSONObject(responseStr)
+                val data = json.optJSONObject("data") ?: json
+                ChatToolResult(
+                    usedTool = true,
+                    toolName = "METALS",
+                    context = """
+                        Backend Tool Result: METALS
+                        Query: $textLower
+                        Raw data:
+                        ${data.toString().take(8000)}
+
+                        Instruction: Use this realtime metals data for gold/emas, silver/perak, platinum, or palladium. Do not guess prices.
+                    """.trimIndent()
+                )
+            }
+        } catch (e: Exception) {
+            ChatToolResult.error("METALS", "Backend metals belum tersedia atau gagal mengambil data.")
         }
     }
 
