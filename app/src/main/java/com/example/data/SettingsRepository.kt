@@ -16,13 +16,6 @@ import com.example.network.AiModelConfig
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
 class SettingsRepository(private val context: Context) {
-    companion object {
-        const val SERVER_AI_BASE_URL = "https://chat-ai-lutfula.vercel.app"
-        const val SERVER_AI_PATH = "/api/ai/chat"
-        const val SERVER_AI_MODEL = "server-default"
-        const val SERVER_AI_SENTINEL = "__SERVER_AI_DEFAULT__"
-    }
-
     private val moshi = Moshi.Builder().build()
     private val modelConfigsAdapter = moshi.adapter<List<AiModelConfig>>(Types.newParameterizedType(List::class.java, AiModelConfig::class.java))
 
@@ -70,35 +63,23 @@ class SettingsRepository(private val context: Context) {
     private val MEMORY_ENABLED = booleanPreferencesKey("memory_enabled")
 
     private val secureSettingsManager = SecureSettingsManager(context)
-
-    private fun storedTextApiKey(): String = secureSettingsManager.getTextApiKey()
-    fun isUsingServerAiKey(): Boolean = storedTextApiKey().isBlank()
-    private fun effectiveTextApiKey(): String = storedTextApiKey().ifBlank { SERVER_AI_SENTINEL }
     
     val textProvider: Flow<String> = context.dataStore.data.map { it[TEXT_PROVIDER] ?: "" }
     
-    val apiKey: kotlinx.coroutines.flow.MutableStateFlow<String> = kotlinx.coroutines.flow.MutableStateFlow(effectiveTextApiKey())
+    val apiKey: kotlinx.coroutines.flow.MutableStateFlow<String> = kotlinx.coroutines.flow.MutableStateFlow(secureSettingsManager.getTextApiKey())
     
     fun setApiKey(key: String) {
-        val cleaned = key.trim()
-        if (cleaned.isNotBlank() && cleaned != SERVER_AI_SENTINEL) {
-            secureSettingsManager.saveTextApiKey(cleaned)
+        if (key.isNotBlank()) {
+            secureSettingsManager.saveTextApiKey(key)
         } else {
             secureSettingsManager.clearTextApiKey()
         }
-        apiKey.value = effectiveTextApiKey()
+        apiKey.value = secureSettingsManager.getTextApiKey()
     }
 
-    val baseUrl: Flow<String> = context.dataStore.data.map { prefs ->
-        if (isUsingServerAiKey()) SERVER_AI_BASE_URL else prefs[BASE_URL] ?: ""
-    }
-    val textPath: Flow<String> = context.dataStore.data.map { prefs ->
-        if (isUsingServerAiKey()) SERVER_AI_PATH else prefs[TEXT_PATH] ?: "/chat/completions"
-    }
-    val model: Flow<String> = context.dataStore.data.map { prefs ->
-        val savedModel = prefs[MODEL] ?: ""
-        if (isUsingServerAiKey() && savedModel.isBlank()) SERVER_AI_MODEL else savedModel
-    }
+    val baseUrl: Flow<String> = context.dataStore.data.map { it[BASE_URL] ?: "" }
+    val textPath: Flow<String> = context.dataStore.data.map { it[TEXT_PATH] ?: "/chat/completions" }
+    val model: Flow<String> = context.dataStore.data.map { it[MODEL] ?: "" }
     
     val savedModelsList: Flow<List<AiModelConfig>> = context.dataStore.data.map { prefs ->
         val json = prefs[SAVED_MODELS_JSON]
@@ -115,7 +96,7 @@ class SettingsRepository(private val context: Context) {
     }
     
     suspend fun addSavedModel(modelConfig: AiModelConfig) {
-        if (modelConfig.modelName.isBlank() || modelConfig.modelName == SERVER_AI_MODEL) return
+        if (modelConfig.modelName.isBlank()) return
         context.dataStore.edit { prefs ->
             // load current
             val json = prefs[SAVED_MODELS_JSON]
@@ -193,7 +174,7 @@ class SettingsRepository(private val context: Context) {
             prefs[TEXT_PROVIDER] = provider
             prefs[BASE_URL] = url
             prefs[TEXT_PATH] = path
-            prefs[MODEL] = if (modelName == SERVER_AI_MODEL) "" else modelName
+            prefs[MODEL] = modelName
         }
     }
 
