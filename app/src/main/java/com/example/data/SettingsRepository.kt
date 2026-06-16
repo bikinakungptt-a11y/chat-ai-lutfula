@@ -16,6 +16,13 @@ import com.example.network.AiModelConfig
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
 class SettingsRepository(private val context: Context) {
+    companion object {
+        const val SERVER_AI_BASE_URL = "https://chat-ai-lutfula.vercel.app"
+        const val SERVER_AI_PATH = "/api/ai/chat"
+        const val SERVER_AI_MODEL = "server-default"
+        const val SERVER_AI_SENTINEL = "__SERVER_AI_DEFAULT__"
+    }
+
     private val moshi = Moshi.Builder().build()
     private val modelConfigsAdapter = moshi.adapter<List<AiModelConfig>>(Types.newParameterizedType(List::class.java, AiModelConfig::class.java))
 
@@ -63,23 +70,45 @@ class SettingsRepository(private val context: Context) {
     private val MEMORY_ENABLED = booleanPreferencesKey("memory_enabled")
 
     private val secureSettingsManager = SecureSettingsManager(context)
+
+    private fun storedTextApiKey(): String = secureSettingsManager.getTextApiKey().trim()
+
+    private fun shouldUseServerAiKey(key: String): Boolean {
+        val cleaned = key.trim()
+        return cleaned.isBlank() ||
+            cleaned.equals("backend", ignoreCase = true) ||
+            cleaned.equals("server", ignoreCase = true) ||
+            cleaned == SERVER_AI_SENTINEL ||
+            cleaned.all { it == '•' || it == '*' }
+    }
+
+    fun isUsingServerAiKey(): Boolean = shouldUseServerAiKey(storedTextApiKey())
+    private fun effectiveTextApiKey(): String = if (isUsingServerAiKey()) SERVER_AI_SENTINEL else storedTextApiKey()
     
     val textProvider: Flow<String> = context.dataStore.data.map { it[TEXT_PROVIDER] ?: "" }
     
-    val apiKey: kotlinx.coroutines.flow.MutableStateFlow<String> = kotlinx.coroutines.flow.MutableStateFlow(secureSettingsManager.getTextApiKey())
+    val apiKey: kotlinx.coroutines.flow.MutableStateFlow<String> = kotlinx.coroutines.flow.MutableStateFlow(effectiveTextApiKey())
     
     fun setApiKey(key: String) {
-        if (key.isNotBlank()) {
-            secureSettingsManager.saveTextApiKey(key)
-        } else {
+        val cleaned = key.trim()
+        if (shouldUseServerAiKey(cleaned)) {
             secureSettingsManager.clearTextApiKey()
+        } else {
+            secureSettingsManager.saveTextApiKey(cleaned)
         }
-        apiKey.value = secureSettingsManager.getTextApiKey()
+        apiKey.value = effectiveTextApiKey()
     }
 
-    val baseUrl: Flow<String> = context.dataStore.data.map { it[BASE_URL] ?: "" }
-    val textPath: Flow<String> = context.dataStore.data.map { it[TEXT_PATH] ?: "/chat/completions" }
-    val model: Flow<String> = context.dataStore.data.map { it[MODEL] ?: "" }
+    val baseUrl: Flow<String> = context.dataStore.data.map { prefs ->
+        if (isUsingServerAiKey()) SERVER_AI_BASE_URL else prefs[BASE_URL] ?: ""
+    }
+    val textPath: Flow<String> = context.dataStore.data.map { prefs ->
+        if (isUsingServerAiKey()) SERVER_AI_PATH else prefs[TEXT_PATH] ?: "/chat/completions"
+    }
+    val model: Flow<String> = context.dataStore.data.map { prefs ->
+        val savedModel = prefs[MODEL] ?: ""
+        if (isUsingServerAiKey() && savedModel.isBlank()) SERVER_AI_MODEL else savedModel
+    }
     
     val savedModelsList: Flow<List<AiModelConfig>> = context.dataStore.data.map { prefs ->
         val json = prefs[SAVED_MODELS_JSON]
@@ -96,7 +125,7 @@ class SettingsRepository(private val context: Context) {
     }
     
     suspend fun addSavedModel(modelConfig: AiModelConfig) {
-        if (modelConfig.modelName.isBlank()) return
+        if (modelConfig.modelName.isBlank() || modelConfig.modelName == SERVER_AI_MODEL) return
         context.dataStore.edit { prefs ->
             // load current
             val json = prefs[SAVED_MODELS_JSON]
@@ -172,9 +201,9 @@ class SettingsRepository(private val context: Context) {
         setApiKey(key)
         context.dataStore.edit { prefs ->
             prefs[TEXT_PROVIDER] = provider
-            prefs[BASE_URL] = url
-            prefs[TEXT_PATH] = path
-            prefs[MODEL] = modelName
+            prefs[BASE_URL] = url.ifBlank { SERVER_AI_BASE_URL }
+            prefs[TEXT_PATH] = path.ifBlank { SERVER_AI_PATH }
+            prefs[MODEL] = if (modelName.isBlank() || modelName == SERVER_AI_MODEL) "" else modelName
         }
     }
 
