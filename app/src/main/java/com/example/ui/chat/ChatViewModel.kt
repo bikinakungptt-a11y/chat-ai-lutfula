@@ -307,56 +307,41 @@ class ChatViewModel(
                 
                 if (isGoldQuery) {
                     _uiState.update { it.copy(isLoading = true, loadingText = "Fetching Metals API...") }
-                    var metalsKey = com.example.BuildConfig.METALS_API_KEY
-                    if (metalsKey.isBlank() || metalsKey == "YOUR_METALS_API_KEY") {
-                        metalsKey = com.example.BuildConfig.METALS_DEV_API_KEY
-                    }
+                    try {
+                        val request = Request.Builder()
+                            .url("https://chat-ai-lutfula.vercel.app/api/metals?symbol=XAU&currency=USD&unit=toz")
+                            .get()
+                            .build()
+                        val response = okHttpClient.newCall(request).execute()
+                        val body = response.body?.string()
+                        if (response.isSuccessful && body != null) {
+                            val json = org.json.JSONObject(body)
+                            if (json.optBoolean("success", json.optBoolean("ok", false))) {
+                                val price = json.optDouble("price", 0.0)
+                                val priceFormatted = json.optString("priceFormatted", if (price > 0) String.format("%.2f", price) else "N/A")
+                                val source = json.optString("source", "metals.dev via Vercel backend")
+                                val finalStr = "Harga XAU realtime:\n1 XAU = $$priceFormatted\nSumber: $source"
 
-                    if (metalsKey.isBlank() || metalsKey == "YOUR_METALS_DEV_API_KEY" || metalsKey == "YOUR_METALS_API_KEY") {
-                        val errMsg = "API harga realtime gagal: METALS_API_KEY/METALS_DEV_API_KEY not configured."
-                        chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = errMsg))
-                        _uiState.update { it.copy(isLoading = false, loadingText = null) }
-                        return@launch
-                    } else {
-                        try {
-                            val request = okhttp3.Request.Builder()
-                                .url("https://api.metals.dev/v1/latest?api_key=$metalsKey&currency=USD&unit=toz")
-                                .build()
-                            val response = okHttpClient.newCall(request).execute()
-                            val body = response.body?.string()
-                            if (response.isSuccessful && body != null) {
-                                val json = org.json.JSONObject(body)
-                                val metals = json.optJSONObject("metals") ?: json.optJSONObject("rates")?.optJSONObject("metals") ?: json.optJSONObject("rates")
-                                val rates = json.optJSONObject("rates")
-                                var price = 0.0
-                                if (metals != null && metals.has("gold")) {
-                                    price = metals.optDouble("gold")
-                                } else if (metals != null && metals.has("XAU")) {
-                                    price = metals.optDouble("XAU")
-                                } else if (rates != null && rates.has("gold")) {
-                                    price = rates.optDouble("gold")
-                                } else if (rates != null && rates.has("XAU")) {
-                                    price = rates.optDouble("XAU")
-                                }
-                                
-                                val priceFormatted = if (price > 0) String.format("%.2f", price) else "N/A"
-                                val finalStr = "Harga XAU realtime:\n1 XAU = $$priceFormatted\nSumber: metals.dev realtime API"
-                                
                                 chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = finalStr))
                                 _uiState.update { it.copy(isLoading = false, loadingText = null) }
                                 return@launch
                             } else {
-                                val errMsg = "API harga realtime gagal: Metals API ${response.code}\nResponse: $body"
-                                chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = errMsg))
+                                val errMsg = json.optString("error", "Metals backend gagal")
+                                chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "API harga realtime gagal: $errMsg"))
                                 _uiState.update { it.copy(isLoading = false, loadingText = null) }
                                 return@launch
                             }
-                        } catch(e: Exception) {
-                            val errMsg = "API harga realtime gagal: Metals API ${e.message}"
+                        } else {
+                            val errMsg = "API harga realtime gagal: Vercel Metals API ${response.code}\nResponse: $body"
                             chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = errMsg))
                             _uiState.update { it.copy(isLoading = false, loadingText = null) }
                             return@launch
                         }
+                    } catch(e: Exception) {
+                        val errMsg = "API harga realtime gagal: Vercel Metals API ${e.message}"
+                        chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = errMsg))
+                        _uiState.update { it.copy(isLoading = false, loadingText = null) }
+                        return@launch
                     }
                 }
                 
