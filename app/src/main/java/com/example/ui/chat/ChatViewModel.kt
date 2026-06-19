@@ -60,6 +60,7 @@ class ChatViewModel(
 ) : ViewModel() {
 
     private val cryptoPriceRepository = com.example.data.CryptoPriceRepository(okHttpClient)
+    private val cryptoSearchRepository = com.example.data.CryptoSearchRepository(okHttpClient)
     private val holidayRepository = com.example.data.HolidayRepository(okHttpClient)
     private val currencyRepository = com.example.data.CurrencyRepository(okHttpClient)
 
@@ -366,23 +367,23 @@ class ChatViewModel(
                 }
 
                 val urlsInMessage = Regex("(https?://[\\w-]+(\\.[\\w-]+)+(/([\\w- ./?%&=]*)?)?)").findAll(messageText).map { it.value }.toList()
-                val cryptoIds = mutableListOf<String>()
-                if (Regex("\\b(btc|bitcoin)\\b").containsMatchIn(textLower)) cryptoIds.add("bitcoin")
-                if (Regex("\\b(eth|ethereum)\\b").containsMatchIn(textLower)) cryptoIds.add("ethereum")
-                if (Regex("\\b(sol|solana)\\b").containsMatchIn(textLower)) cryptoIds.add("solana")
-                if (Regex("\\b(bnb|binancecoin)\\b").containsMatchIn(textLower)) cryptoIds.add("binancecoin")
-                if (Regex("\\b(xrp|ripple)\\b").containsMatchIn(textLower)) cryptoIds.add("ripple")
-                if (Regex("\\b(doge|dogecoin)\\b").containsMatchIn(textLower)) cryptoIds.add("dogecoin")
-                if (Regex("\\b(usdt|tether)\\b").containsMatchIn(textLower)) cryptoIds.add("tether")
-
-                val isCryptoQuery = cryptoIds.isNotEmpty()
+                val cryptoQuery = com.example.data.CryptoDetector.detect(messageText)
+                val isCryptoQuery = cryptoQuery != null
                 val isNewsOrSentiment = Regex("\\b(berita|news|sentimen|kenapa|positif|negatif|turun|naik)\\b").containsMatchIn(textLower)
                 var useSearch = shouldUseRealtimeSearch(messageText)
 
-                if (isCryptoQuery) {
-                    _uiState.update { it.copy(isLoading = true, loadingText = "Fetching CoinGecko API...") }
+                if (isCryptoQuery && cryptoQuery != null) {
+                    _uiState.update { it.copy(isLoading = true, loadingText = "Searching CoinGecko...") }
                     try {
-                        val cryptoData = cryptoPriceRepository.getCryptoPrice(cryptoIds)
+                        val coin = cryptoSearchRepository.searchBestMatch(cryptoQuery)
+                        if (coin == null) {
+                            val noCoinMsg = "Crypto tidak ditemukan di CoinGecko untuk: ${cryptoQuery.query}"
+                            chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = noCoinMsg))
+                            _uiState.update { it.copy(isLoading = false, loadingText = null) }
+                            return@launch
+                        }
+
+                        val cryptoData = cryptoPriceRepository.getCryptoPrice(coin)
                         if (!isNewsOrSentiment && urlsInMessage.isEmpty()) {
                             chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = cryptoData))
                             _uiState.update { it.copy(isLoading = false, loadingText = null) }
