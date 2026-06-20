@@ -681,7 +681,7 @@ fun MessageBubble(message: UiMessage) {
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Ai Chat Assistant",
+                        text = "Ai Chat",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = FontWeight.Bold
