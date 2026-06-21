@@ -81,6 +81,12 @@ class ChatViewModel(
             }
         }
         viewModelScope.launch {
+            settingsRepository.chatMode.collect { savedMode ->
+                val mode = runCatching { ChatMode.valueOf(savedMode) }.getOrDefault(ChatMode.NORMAL)
+                _uiState.update { it.copy(mode = mode) }
+            }
+        }
+        viewModelScope.launch {
             settingsRepository.savedModelsList.collect { models ->
                 _uiState.update { it.copy(savedModelsList = models) }
                 val current = _uiState.value.currentModel
@@ -134,6 +140,9 @@ class ChatViewModel(
 
     fun setMode(mode: ChatMode) {
         _uiState.update { it.copy(mode = mode) }
+        viewModelScope.launch {
+            settingsRepository.saveChatMode(mode.name)
+        }
     }
 
     private fun shouldUseRealtimeSearch(messageText: String): Boolean {
