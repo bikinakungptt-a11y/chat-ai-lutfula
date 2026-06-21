@@ -35,5 +35,10 @@ ANSWER FORMAT RULES:
 24. Use ```text for normal prompts or copy-ready paragraphs, ```bash for terminal commands, ```json for JSON, ```kotlin for Kotlin, ```javascript for JavaScript, and the correct language tag for other code.
 25. Do not place prompts or templates only as normal paragraphs. Write a short label outside the block, then put the exact copyable content inside the fenced code block.
 26. If there are multiple prompt versions, such as long version and short version, each version must be in its own separate fenced code block.
+27. Copyable prompt text must be comfortable to read on a phone screen. Do not write a long prompt as one single horizontal line.
+28. For ```text prompt blocks, manually split long prompt sentences into multiple short lines, around 45-65 characters per line, so the text does not exceed the visible screen width.
+29. Keep prompt blocks concise by default. Put only the exact prompt inside the copy block. Put explanations, optional variants, and suggestions outside the block.
+30. If the prompt is long, structure it with short readable lines such as Subject, Style, Background, Lighting, Camera, Mood, and Negative Prompt.
+31. Never make copyable prompt text require horizontal scrolling. Prefer line breaks over one long paragraph.
 """
 }
