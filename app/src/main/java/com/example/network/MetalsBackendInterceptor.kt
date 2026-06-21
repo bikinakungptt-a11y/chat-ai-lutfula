@@ -11,10 +11,20 @@ class MetalsBackendInterceptor : Interceptor {
         val originalRequest = chain.request()
         val originalUrl = originalRequest.url
 
-        val shouldRouteToBackend = originalUrl.host == "api.metals.dev" &&
+        val isMetalsLatestRequest = originalUrl.host == "api.metals.dev" &&
             originalUrl.encodedPath.contains("/v1/latest")
 
-        if (!shouldRouteToBackend) {
+        if (!isMetalsLatestRequest) {
+            return chain.proceed(originalRequest)
+        }
+
+        val apiKey = originalUrl.queryParameter("api_key").orEmpty().trim()
+        val shouldUseBackend = apiKey.isBlank() ||
+            apiKey == "YOUR_METALS_API_KEY" ||
+            apiKey == "YOUR_METALS_DEV_API_KEY" ||
+            apiKey == "VERCEL_BACKEND"
+
+        if (!shouldUseBackend) {
             return chain.proceed(originalRequest)
         }
 
