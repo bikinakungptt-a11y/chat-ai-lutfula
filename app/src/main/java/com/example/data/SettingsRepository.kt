@@ -22,6 +22,7 @@ class SettingsRepository(private val context: Context) {
     private val BASE_URL = stringPreferencesKey("base_url")
     private val TEXT_PATH = stringPreferencesKey("text_path")
     private val MODEL = stringPreferencesKey("model")
+    private val CHAT_MODE = stringPreferencesKey("chat_mode")
     private val SAVED_MODELS = stringPreferencesKey("saved_models")
     private val SAVED_MODELS_JSON = stringPreferencesKey("saved_models_json")
     private val TEXT_PROVIDER = stringPreferencesKey("text_provider")
@@ -80,6 +81,7 @@ class SettingsRepository(private val context: Context) {
     val baseUrl: Flow<String> = context.dataStore.data.map { it[BASE_URL] ?: "" }
     val textPath: Flow<String> = context.dataStore.data.map { it[TEXT_PATH] ?: "/chat/completions" }
     val model: Flow<String> = context.dataStore.data.map { it[MODEL] ?: "" }
+    val chatMode: Flow<String> = context.dataStore.data.map { it[CHAT_MODE] ?: "NORMAL" }
     
     val savedModelsList: Flow<List<AiModelConfig>> = context.dataStore.data.map { prefs ->
         val json = prefs[SAVED_MODELS_JSON]
@@ -165,6 +167,12 @@ class SettingsRepository(private val context: Context) {
     suspend fun updateModel(modelName: String) {
         context.dataStore.edit { prefs ->
             prefs[MODEL] = modelName
+        }
+    }
+
+    suspend fun saveChatMode(modeName: String) {
+        context.dataStore.edit { prefs ->
+            prefs[CHAT_MODE] = modeName
         }
     }
 
