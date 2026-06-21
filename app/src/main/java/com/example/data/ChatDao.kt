@@ -22,6 +22,9 @@ interface ChatDao {
     @Query("SELECT * FROM messages WHERE sessionId = :sessionId ORDER BY timestamp ASC")
     fun getMessagesForSession(sessionId: Long): Flow<List<MessageEntity>>
 
+    @Query("SELECT * FROM messages ORDER BY timestamp DESC LIMIT 1")
+    fun observeLatestMessage(): Flow<MessageEntity?>
+
     @Insert
     suspend fun insertMessage(message: MessageEntity)
 
