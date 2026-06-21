@@ -1,5 +1,6 @@
 package com.example
 
+import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -31,6 +32,7 @@ object AppNotify {
         show(context, id, "Ai Chat Reminder", "It's time for your reminder.")
     }
 
+    @SuppressLint("MissingPermission")
     private fun show(context: Context, id: Int, title: String, message: String) {
         createChannels(context)
         val intent = Intent(context, MainActivity::class.java).apply {
