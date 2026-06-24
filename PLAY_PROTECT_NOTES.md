@@ -1,19 +1,19 @@
 # Play Protect cleanup notes
 
-This app was cleaned to reduce Play Protect risk when installing APKs outside the Play Store.
+This app was cleaned to reduce Play Protect risk when installing APKs outside the Play Store, without breaking gallery/file upload.
 
 ## What changed
 
-- Removed unused Android permissions from the manifest:
-  - `READ_MEDIA_IMAGES`
-  - `READ_MEDIA_VIDEO`
-  - `READ_MEDIA_VISUAL_USER_SELECTED`
-  - `READ_EXTERNAL_STORAGE`
-  - `RECORD_AUDIO`
-  - `POST_NOTIFICATIONS`
-- Kept only:
+- Kept required Android permissions:
   - `INTERNET` for AI/API calls
   - `CAMERA` for the AI Studio camera button
+  - `READ_MEDIA_IMAGES` for gallery image upload on Android 13+
+  - `READ_MEDIA_VIDEO` for gallery video access on Android 13+
+  - `READ_MEDIA_VISUAL_USER_SELECTED` for Android 14 selected-photo compatibility
+  - `READ_EXTERNAL_STORAGE` with `maxSdkVersion="32"` for gallery/file upload on Android 12 and below
+- Removed unused Android permissions:
+  - `RECORD_AUDIO`
+  - `POST_NOTIFICATIONS`
 - Removed unused notification/reminder background code:
   - `AppNotify.kt`
   - `ReminderScheduler.kt`
