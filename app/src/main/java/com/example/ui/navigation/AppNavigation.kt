@@ -1,23 +1,24 @@
 package com.example.ui.navigation
 
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
-import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import androidx.compose.animation.*
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.tween
 import com.example.di.AppContainer
 import com.example.ui.WelcomeScreen
@@ -31,14 +32,14 @@ sealed class Screen(val route: String, val title: String, val icon: androidx.com
     object Chat : Screen("chat", "Chat", Icons.AutoMirrored.Filled.Chat)
     object Settings : Screen("settings", "Settings", Icons.Filled.Settings)
     object Studio : Screen("studio", "AI Studio", Icons.Filled.Movie)
-    object Market : Screen("market", "Crypto Info", Icons.Filled.Settings) // reused icon
+    object Market : Screen("market", "Crypto Info", Icons.Filled.Settings)
 }
 
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
     val context = androidx.compose.ui.platform.LocalContext.current
-    
+
     val settingsRepository = AppContainer.getSettingsRepository(context)
     val chatRepository = AppContainer.getChatRepository(context)
 
@@ -61,19 +62,6 @@ fun AppNavigation() {
             AppContainer.getLocalStorage(context)
         )
     )
-
-    LaunchedEffect(Unit) {
-        val prefs = context.applicationContext.getSharedPreferences("notification_open", android.content.Context.MODE_PRIVATE)
-        val sessionId = prefs.getLong("pending_session_id", -1L)
-        if (sessionId > 0L) {
-            prefs.edit().remove("pending_session_id").apply()
-            chatViewModel.selectSession(sessionId)
-            navController.navigate(Screen.Chat.route) {
-                popUpTo(Screen.Welcome.route) { inclusive = true }
-                launchSingleTop = true
-            }
-        }
-    }
 
     Scaffold { innerPadding ->
         NavHost(
