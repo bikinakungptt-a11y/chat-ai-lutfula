@@ -28,14 +28,20 @@ class SecureSettingsManager(context: Context) {
     }
 
     fun saveTextApiKey(key: String) {
-        sharedPreferences.edit().putString("text_api_key", key).apply()
+        runCatching {
+            sharedPreferences.edit().putString("text_api_key", key).apply()
+        }
     }
 
     fun getTextApiKey(): String {
-        return sharedPreferences.getString("text_api_key", "") ?: ""
+        return runCatching {
+            sharedPreferences.getString("text_api_key", "") ?: ""
+        }.getOrDefault("")
     }
 
     fun clearTextApiKey() {
-        sharedPreferences.edit().remove("text_api_key").apply()
+        runCatching {
+            sharedPreferences.edit().remove("text_api_key").apply()
+        }
     }
 }
