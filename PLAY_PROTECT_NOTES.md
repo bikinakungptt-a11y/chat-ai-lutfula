@@ -20,21 +20,10 @@ This app was cleaned to reduce Play Protect risk when installing APKs outside th
   - `AlarmEvent.kt`
   - `AppVisibility.kt`
 - Removed startup notification permission request.
-- Bumped APK version to `1.0.2` / `versionCode 3` after restoring gallery permissions.
+- Bumped APK version to `1.0.3` / `versionCode 4` after the Gradle CI fix.
 - Debug builds now use package suffix `.debug` so they do not look like the real release app.
-- GitHub Actions now prefers a signed release APK when release signing secrets are available.
+- GitHub Actions now uses the Gradle setup action and the `gradle` command directly, so it does not fail on a corrupt `gradle-wrapper.jar`.
 
 ## Important
 
-For normal phone installation, use a release APK, not the debug fallback APK.
-
-The debug artifact is only for testing and is uploaded as `app-debug-test-only`.
-
-To build a release APK in GitHub Actions, add these repository secrets:
-
-- `RELEASE_KEYSTORE_BASE64`
-- `STORE_PASSWORD`
-- `KEY_ALIAS`
-- `KEY_PASSWORD`
-
-Then run the Android CI workflow. The release artifact will be named `app-release`.
+For normal phone installation, use the APK artifact named `app-debug-test-only` from Android CI until release signing is configured again.
