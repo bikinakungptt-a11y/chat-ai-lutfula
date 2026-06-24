@@ -1,8 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Minimal permissions: internet for AI/API calls, camera only for the AI Studio camera button. -->
+    <!-- Required for AI/API calls. -->
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Required for selecting and reading images/videos from gallery on Android 13+. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+
+    <!-- Required for Android 14 selected-photo access compatibility. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+
+    <!-- Required for gallery/file upload on Android 12 and below. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+
+    <!-- Required only for the AI Studio camera button. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
