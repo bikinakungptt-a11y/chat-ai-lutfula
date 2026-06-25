@@ -3,11 +3,8 @@ package com.example.ui.chat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.example.data.AppGuide
-import com.example.data.ChatRepository
-import com.example.data.ChatSessionEntity
-import com.example.data.MessageEntity
 import com.example.data.SettingsRepository
+import com.example.network.ChatMessage
 import com.example.network.ChatRequest
 import com.example.network.ChatResponse
 import com.example.network.ReasoningConfig
@@ -24,10 +21,16 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
+import com.example.data.AppGuide
+import com.example.data.ChatSessionEntity
+import com.example.data.ChatRepository
+import com.example.data.MessageEntity
+import kotlinx.coroutines.flow.map
+import com.google.mlkit.nl.languageid.LanguageIdentification
 
-
-enum class ChatMode { NORMAL, THINK, THINK_DEEPLY }
-
+enum class ChatMode {
+    NORMAL, THINK, THINK_DEEPLY
+}
 
 data class UiMessage(
     val id: String = java.util.UUID.randomUUID().toString(),
@@ -36,7 +39,6 @@ data class UiMessage(
     val imageUri: String? = null,
     val isError: Boolean = false
 )
-
 
 data class ChatUiState(
     val messages: List<UiMessage> = emptyList(),
@@ -50,7 +52,6 @@ data class ChatUiState(
     val mode: ChatMode = ChatMode.NORMAL
 )
 
-
 class ChatViewModel(
     private val applicationContext: android.content.Context,
     private val settingsRepository: SettingsRepository,
@@ -61,18 +62,24 @@ class ChatViewModel(
     private val moshi: Moshi
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(
-        ChatUiState(mode = try { ChatMode.valueOf(localStorage.getChatMode()) } catch (e: Exception) { ChatMode.NORMAL })
-    )
+    private val cryptoPriceRepository = com.example.data.CryptoPriceRepository(okHttpClient)
+    private val holidayRepository = com.example.data.HolidayRepository(okHttpClient)
+
+    private val _uiState = MutableStateFlow(ChatUiState(mode = try { ChatMode.valueOf(localStorage.getChatMode()) } catch (e: Exception) { ChatMode.NORMAL }))
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
+
     private var messageJob: kotlinx.coroutines.Job? = null
 
     init {
         viewModelScope.launch {
-            chatRepository.allSessions.collect { sessions -> _uiState.update { it.copy(sessions = sessions) } }
+            chatRepository.allSessions.collect { sessions ->
+                _uiState.update { it.copy(sessions = sessions) }
+            }
         }
         viewModelScope.launch {
-            settingsRepository.model.collect { model -> _uiState.update { it.copy(currentModel = model) } }
+            settingsRepository.model.collect { model ->
+                _uiState.update { it.copy(currentModel = model) }
+            }
         }
         viewModelScope.launch {
             settingsRepository.savedModelsList.collect { models ->
@@ -88,7 +95,9 @@ class ChatViewModel(
     }
 
     fun updateSelectedModel(modelName: String) {
-        viewModelScope.launch { settingsRepository.updateModel(modelName) }
+        viewModelScope.launch {
+            settingsRepository.updateModel(modelName)
+        }
     }
 
     fun selectSession(sessionId: Long) {
@@ -98,13 +107,13 @@ class ChatViewModel(
             chatRepository.getMessagesForSession(sessionId).collect { messages ->
                 _uiState.update { state ->
                     if (state.currentSessionId == sessionId) {
-                        state.copy(messages = messages.map { UiMessage(it.id.toString(), it.role, it.content, it.imageUri) })
+                         state.copy(messages = messages.map { UiMessage(it.id.toString(), it.role, it.content, it.imageUri) })
                     } else state
                 }
             }
         }
     }
-
+    
     fun createNewSession() {
         _uiState.update { it.copy(currentSessionId = null, messages = emptyList()) }
         messageJob?.cancel()
@@ -113,7 +122,15 @@ class ChatViewModel(
     fun deleteSession(sessionId: Long) {
         viewModelScope.launch(Dispatchers.IO) {
             chatRepository.deleteSession(sessionId)
-            if (_uiState.value.currentSessionId == sessionId) createNewSession()
+            
+            if (_uiState.value.currentSessionId == sessionId) {
+                val remainingSessions = _uiState.value.sessions.filter { it.id != sessionId }
+                if (remainingSessions.isNotEmpty()) {
+                    selectSession(remainingSessions.first().id)
+                } else {
+                    createNewSession()
+                }
+            }
         }
     }
 
@@ -122,212 +139,244 @@ class ChatViewModel(
         localStorage.saveChatMode(mode.name)
     }
 
-    private fun realtimeQuery(messageText: String): String? {
-        val text = messageText.trim()
-        if (text.isEmpty()) return null
-        val parts = text.split(Regex("\\s+"), limit = 2)
-        val first = parts.firstOrNull()?.lowercase() ?: return null
-        return if (first == "#berita" || first == "#browser" || first == "#cari") {
-            parts.getOrNull(1)?.trim() ?: ""
-        } else null
-    }
-
-    private fun formatRealtimeResponse(raw: String, query: String): String {
-        val json = org.json.JSONObject(raw)
-        val arr = json.optJSONArray("data") ?: json.optJSONArray("results")
-            ?: return "Search realtime berjalan, tetapi hasil dari backend belum bisa dibaca."
-        if (arr.length() == 0) return "Belum ada hasil realtime yang relevan untuk: $query"
-
-        val list = mutableListOf<String>()
-        for (i in 0 until minOf(5, arr.length())) {
-            val item = arr.optJSONObject(i) ?: continue
-            val title = item.optString("title", "Tanpa judul").ifBlank { "Tanpa judul" }
-            val desc = item.optString("description", "").ifBlank { item.optString("markdown", "").take(300) }
-            val url = item.optString("url", "")
-            list.add("${i + 1}. $title\n   $desc" + if (url.isNotBlank()) "\n   Sumber: $url" else "")
-        }
-        return "Hasil pencarian realtime untuk: $query\n\n" + list.joinToString("\n\n")
-    }
-
-    private fun callVercelSearch(query: String): Result<String> {
-        return try {
-            val encoded = java.net.URLEncoder.encode(query, "UTF-8")
-            val req = Request.Builder()
-                .url("https://chat-ai-lutfula.vercel.app/api/search?q=$encoded")
-                .get()
-                .build()
-            val res = okHttpClient.newCall(req).execute()
-            val body = res.body?.string().orEmpty()
-            if (!res.isSuccessful) {
-                Result.failure(Exception("Backend realtime HTTP ${res.code}: ${body.take(250)}"))
-            } else if (body.isBlank()) {
-                Result.failure(Exception("Backend realtime mengembalikan response kosong."))
-            } else {
-                Result.success(formatRealtimeResponse(body, query))
-            }
-        } catch (e: Exception) {
-            Result.failure(Exception("Backend realtime gagal: ${e.message}"))
-        }
-    }
-
-    private suspend fun handleLocalCommand(text: String, sessionId: Long): Boolean {
-        val lower = text.trim().lowercase()
-        if (lower == "memory off") {
+    private suspend fun handleMemoryCommand(messageText: String, sessionId: Long): Boolean {
+        val textLower = messageText.trim().lowercase()
+        val memoryEnabled = settingsRepository.memoryEnabled.first()
+        
+        if (textLower == "memory off") {
             settingsRepository.saveMemoryEnabled(false)
             chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "Memory is now disabled."))
             return true
-        }
-        if (lower == "memory on") {
+        } else if (textLower == "memory on") {
             settingsRepository.saveMemoryEnabled(true)
             chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "Memory is now enabled."))
             return true
         }
-        if (lower == "hapus memory") {
-            memoryRepository.deleteAllMemories()
-            localStorage.prefs.edit().remove("custom_instruction").commit()
-            chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "Memory deleted."))
+
+        if (!memoryEnabled && (textLower.startsWith("ingat") || textLower.startsWith("simpan") || textLower.startsWith("remember") || textLower == "hapus memory" || textLower == "lihat memory" || textLower.startsWith("lupakan"))) {
+            chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "Memory is disabled. Say 'memory on' to enable it."))
             return true
         }
+
+        if (textLower == "hapus memory") {
+            memoryRepository.deleteAllMemories()
+            localStorage.prefs.edit().remove("custom_instruction").commit()
+            chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "All memories and instructions have been deleted."))
+            return true
+        } else if (textLower == "lihat memory" || textLower == "debug lokal") {
+            val memories = memoryRepository.getAllMemories()
+            val savedLocal = localStorage.getInstruction()
+            if (memories.isEmpty() && savedLocal.isEmpty()) {
+                chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "Memory is empty."))
+            } else {
+                val listStr = memories.joinToString("\n") { "- ${it.content}" }
+                chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "Debug Check - LocalStorage:\n$savedLocal\n\nRoom memories:\n$listStr"))
+            }
+            return true
+        }
+
         return false
     }
 
     fun sendMessage(userText: String, imageUri: String? = null) {
-        val text = userText.trim()
-        if (text.isEmpty() && imageUri == null) return
-        val oldMessages = _uiState.value.messages.toList()
-        _uiState.update { it.copy(isLoading = true, loadingText = null, error = null) }
+        val messageText = userText.trim()
+        if (messageText.isEmpty() && imageUri == null) return
+
+        val previousMessagesSnapshot = _uiState.value.messages.toList()
+
+        _uiState.update { 
+            it.copy(
+                isLoading = true,
+                loadingText = null,
+                error = null
+            )
+        }
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 var sessionId = _uiState.value.currentSessionId
                 if (sessionId == null) {
-                    val title = if (text.length > 20) text.substring(0, 20) + "..." else text.ifBlank { "New Chat" }
+                    val title = if (messageText.isNotEmpty()) {
+                         if (messageText.length > 20) messageText.substring(0, 20) + "..." else messageText
+                    } else "Photo Attached"
                     sessionId = chatRepository.createNewSession(title)
                     _uiState.update { it.copy(currentSessionId = sessionId) }
                     selectSession(sessionId)
                 }
-
-                chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "user", content = text, imageUri = imageUri))
-
-                if (handleLocalCommand(text, sessionId)) {
-                    _uiState.update { it.copy(isLoading = false, loadingText = null) }
+                
+                chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "user", content = messageText, imageUri = imageUri))
+                
+                if (handleMemoryCommand(messageText, sessionId)) {
+                    _uiState.update { it.copy(isLoading = false) }
                     return@launch
                 }
-
-                val query = realtimeQuery(text)
-                if (query != null) {
-                    if (query.isBlank()) {
-                        chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "Masukkan kata kunci setelah #berita, #browser, atau #cari."))
-                        _uiState.update { it.copy(isLoading = false, loadingText = null) }
-                        return@launch
-                    }
-                    _uiState.update { it.copy(loadingText = "Mencari data realtime...") }
-                    val result = callVercelSearch(query)
-                    val answer = result.getOrElse { err -> "Search realtime gagal dari backend Vercel.\n\n${err.message}" }
-                    chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = answer))
-                    _uiState.update { it.copy(isLoading = false, loadingText = null) }
-                    return@launch
-                }
-
-                val credential = settingsRepository.apiKey.first()
+                
+                val apiKey = settingsRepository.apiKey.first()
                 val baseUrl = settingsRepository.baseUrl.first()
                 val path = settingsRepository.textPath.first()
                 val modelName = settingsRepository.model.first()
-                val models = settingsRepository.savedModelsList.first()
-                val selected = models.find { it.modelName == modelName }
-                val supportsVision = selected?.supportsVision ?: false
-                val supportsReasoning = selected?.supportsReasoning ?: false
-                val langPref = settingsRepository.assistantLanguagePreference.first()
+                val aiModels = settingsRepository.savedModelsList.first()
+                val supportsVision = aiModels.find { it.modelName == modelName }?.supportsVision ?: false
+                val supportsReasoning = aiModels.find { it.modelName == modelName }?.supportsReasoning ?: false
 
-                if (credential.isBlank() || baseUrl.isBlank() || modelName.isBlank()) {
-                    _uiState.update { it.copy(isLoading = false, loadingText = null, error = "Konfigurasi provider chat belum lengkap.") }
+                val langPref = settingsRepository.assistantLanguagePreference.first()
+                val memoryEnabled = settingsRepository.memoryEnabled.first()
+
+                if (apiKey.isBlank() || baseUrl.isBlank() || modelName.isBlank()) {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            error = "Missing configuration. Please check your API Key, Base URL, and Model Name in Settings."
+                        )
+                    }
                     return@launch
                 }
 
-                var systemPrompt = when (_uiState.value.mode) {
+                val baseUrlCleaned = baseUrl.trimEnd('/')
+                val pathCleaned = if (path.startsWith("/")) path else "/$path"
+                val endpoint = "$baseUrlCleaned$pathCleaned"
+
+                val mode = _uiState.value.mode
+                var systemPrompt = when (mode) {
                     ChatMode.NORMAL -> "You are a helpful AI assistant. Provide fast, simple, and direct answers."
-                    ChatMode.THINK -> "You are a helpful AI assistant. Reason carefully but keep the final answer clear."
-                    ChatMode.THINK_DEEPLY -> "You are a helpful AI assistant. Provide deeper analysis for complex tasks."
+                    ChatMode.THINK -> "You are a helpful AI assistant. Approach tasks with careful reasoning and thorough checking. Explain your thought process."
+                    ChatMode.THINK_DEEPLY -> "You are a helpful AI assistant. Provide deeper analysis, detailed debugging, and exhaustive step-by-step reasoning. You are better for coding and complex tasks."
                 }
-                if (langPref == "id") systemPrompt += "\n\nAlways respond in Bahasa Indonesia."
+                
+                if (langPref == "id") {
+                    systemPrompt += "\n\nAlways respond in Bahasa Indonesia. Use clear, simple Indonesian unless the user asks for another language."
+                }
+                
                 systemPrompt += "\n\n" + AppGuide.TEXT
                 systemPrompt += "\n\n" + getCurrentTimeContext()
+                
+                if (memoryEnabled) {
+                    val allMemories = memoryRepository.getAllMemories()
+                    if (allMemories.isNotEmpty()) {
+                        systemPrompt += "\n\nUser memory:\n" + allMemories.take(5).joinToString("\n") { "- ${it.content}" } +
+                            "\nUse these memories only when relevant. Do not mention memory unless the user asks."
+                    }
+                }
 
                 val chatMessages = mutableListOf<com.example.network.ChatRequestMessage>()
                 chatMessages.add(com.example.network.ChatRequestMessage(role = "system", content = listOf(com.example.network.VisionContent(type = "text", text = systemPrompt))))
 
-                oldMessages.filter { !it.content.startsWith("⚠️") }.forEach {
+                previousMessagesSnapshot.filter { !it.content.startsWith("⚠️") }.forEach {
                     chatMessages.add(com.example.network.ChatRequestMessage(role = it.role, content = listOf(com.example.network.VisionContent(type = "text", text = it.content))))
                 }
-
-                if (imageUri != null && !supportsVision) {
-                    val msg = "⚠️ Model ini tidak mendukung membaca gambar. Pilih model vision."
-                    chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = msg))
-                    _uiState.update { it.copy(isLoading = false, loadingText = null, error = msg) }
-                    return@launch
+                
+                val localInstruction = localStorage.getInstruction()
+                if (localInstruction.isNotEmpty()) {
+                    chatMessages.add(com.example.network.ChatRequestMessage(role = "system", content = listOf(com.example.network.VisionContent(type = "text", text = "CRITICAL USER PREFERENCE (ALWAYS FOLLOW THIS IN YOUR NEXT RESPONSE):\n$localInstruction"))))
                 }
 
                 val userParts = mutableListOf<com.example.network.VisionContent>()
-                userParts.add(com.example.network.VisionContent(type = "text", text = text))
+                userParts.add(com.example.network.VisionContent(type = "text", text = "$messageText\n\n${getCurrentTimeContext()}"))
                 if (imageUri != null) {
-                    val dataUrl = uriToBase64(imageUri)
-                    if (dataUrl != null) userParts.add(com.example.network.VisionContent(type = "image_url", imageUrl = com.example.network.VisionImageUrl(url = dataUrl)))
+                    val b64 = uriToBase64(imageUri)
+                    if (b64 != null) {
+                        userParts.add(com.example.network.VisionContent(type = "image_url", imageUrl = com.example.network.VisionImageUrl(url = b64)))
+                    }
                 }
                 chatMessages.add(com.example.network.ChatRequestMessage(role = "user", content = userParts))
 
+                if (imageUri != null && !supportsVision) {
+                   chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "⚠️ Model ini tidak mendukung membaca gambar. Pilih model vision."))
+                   _uiState.update { it.copy(isLoading = false, error = "Model ini tidak mendukung membaca gambar. Pilih model vision.") }
+                   return@launch
+                }
+
                 val reasoning = if (supportsReasoning) {
-                    when (_uiState.value.mode) {
+                    when (mode) {
                         ChatMode.THINK -> ReasoningConfig("medium")
                         ChatMode.THINK_DEEPLY -> ReasoningConfig("high")
                         ChatMode.NORMAL -> null
                     }
                 } else null
 
-                val endpoint = baseUrl.trimEnd('/') + if (path.startsWith("/")) path else "/$path"
-                val requestBody = ChatRequest(model = modelName, messages = chatMessages, reasoning = reasoning)
-                val json = moshi.adapter(ChatRequest::class.java).toJson(requestBody)
-                val body = json.toRequestBody("application/json; charset=utf-8".toMediaType())
+                val requestBody = ChatRequest(
+                    model = modelName,
+                    messages = chatMessages,
+                    reasoning = reasoning
+                )
+
+                val requestAdapter = moshi.adapter(ChatRequest::class.java)
+                val jsonRequestBody = requestAdapter.toJson(requestBody)
+                val body = jsonRequestBody.toRequestBody("application/json; charset=utf-8".toMediaType())
+
                 val request = Request.Builder()
                     .url(endpoint)
-                    .addHeader("Authori" + "zation", "Bearer " + credential)
+                    .addHeader("Authorization", "Bearer $apiKey")
                     .addHeader("Content-Type", "application/json")
                     .post(body)
                     .build()
 
                 val response = okHttpClient.newCall(request).execute()
-                val responseBody = response.body?.string()
-                if (response.isSuccessful && responseBody != null) {
-                    val chatResponse = moshi.adapter(ChatResponse::class.java).fromJson(responseBody)
-                    val reply = chatResponse?.choices?.firstOrNull()?.message?.content ?: chatResponse?.error?.message ?: "No content received."
-                    chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = reply))
-                    _uiState.update { it.copy(isLoading = false, loadingText = null) }
-                } else {
-                    val errorMsg = if (response.code == 503) {
-                        "HTTP 503: Provider/model sedang unavailable. Coba mode Normal atau model lain."
+                val responseBodyStr = response.body?.string()
+
+                if (response.isSuccessful && responseBodyStr != null) {
+                    val responseAdapter = moshi.adapter(ChatResponse::class.java)
+                    val chatResponse = responseAdapter.fromJson(responseBodyStr)
+                    
+                    if (chatResponse?.error != null) {
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                error = "API Error: ${chatResponse.error.message}"
+                            )
+                        }
                     } else {
-                        "HTTP ${response.code}: $responseBody"
+                        val assistantReply = chatResponse?.choices?.firstOrNull()?.message?.content ?: "No content received."
+                        chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = assistantReply))
+                        _uiState.update { it.copy(isLoading = false) }
                     }
-                    _uiState.update { it.copy(isLoading = false, loadingText = null, error = errorMsg) }
+                } else {
+                    val errorMsg = when (response.code) {
+                        401 -> "401 Unauthorized - Check your API key. Some providers require a specific format."
+                        402 -> "402 Payment Required - Check your provider's billing account."
+                        404 -> "404 Not Found - Invalid Base URL or Endpoint."
+                        429 -> "429 Rate Limit Exceeded - You are sending too many requests."
+                        503 -> "HTTP 503: Provider/model sedang unavailable. Coba mode Normal atau model lain."
+                        else -> "HTTP ${response.code}: $responseBodyStr"
+                    }
+                    _uiState.update {
+                        it.copy(isLoading = false, error = errorMsg)
+                    }
                 }
+
             } catch (e: IOException) {
-                _uiState.update { it.copy(isLoading = false, loadingText = null, error = "Network Error or Timeout: ${e.message}") }
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        error = "Network Error or Timeout: ${e.message}. Check your internet connection and Base URL."
+                    )
+                }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, loadingText = null, error = "An unexpected error occurred: ${e.message}") }
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        error = "An unexpected error occurred: ${e.message}"
+                    )
+                }
             }
         }
     }
 
     private fun uriToBase64(uriStr: String?): String? {
+        if (uriStr.isNullOrEmpty()) return null
         return try {
             val uri = android.net.Uri.parse(uriStr)
             val resolver = applicationContext.contentResolver
-            val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
+            val inputStream = resolver.openInputStream(uri)
+            val bytes = inputStream?.readBytes()
+            inputStream?.close()
             if (bytes != null) {
                 val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.DEFAULT or android.util.Base64.NO_WRAP)
                 val mimeType = resolver.getType(uri) ?: "image/jpeg"
                 "data:$mimeType;base64,$base64"
             } else null
         } catch (e: Exception) {
+            android.util.Log.e("ChatViewModel", "Error converting image to base64", e)
             null
         }
     }
@@ -351,17 +400,28 @@ class ChatViewModel(
     }
 }
 
-
 fun getCurrentTimeContext(): String {
-    val zoneId = try { java.time.ZoneId.systemDefault() } catch (e: Exception) { java.time.ZoneId.of("Asia/Jakarta") }
+    val zoneId = try {
+        java.time.ZoneId.systemDefault()
+    } catch (e: Exception) {
+        java.time.ZoneId.of("Asia/Jakarta")
+    }
+
     val now = java.time.ZonedDateTime.now(zoneId)
-    val dateStr = now.format(java.time.format.DateTimeFormatter.ofPattern("EEEE, dd MMMM yyyy", java.util.Locale.forLanguageTag("id-ID")))
-    val timeStr = now.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"))
+    val dateFormatter = java.time.format.DateTimeFormatter.ofPattern(
+        "EEEE, dd MMMM yyyy",
+        java.util.Locale.forLanguageTag("id-ID")
+    )
+    val timeFormatter = java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss")
+    
+    val dateStr = now.format(dateFormatter)
+    val timeStr = now.format(timeFormatter)
+
     return """
-        CURRENT_REAL_TIME_CONTEXT:
-        Tanggal sekarang: $dateStr
-        Jam sekarang: $timeStr
-        Timezone: ${zoneId.id}
-        Country code: ID
-    """.trimIndent()
+CURRENT_REAL_TIME_CONTEXT:
+Tanggal sekarang: $dateStr
+Jam sekarang: $timeStr
+Timezone: ${zoneId.id}
+Country code: ID
+""".trimIndent()
 }
