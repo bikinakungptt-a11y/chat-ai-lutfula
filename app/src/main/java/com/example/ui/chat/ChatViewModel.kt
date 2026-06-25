@@ -47,6 +47,11 @@ data class ChatUiState(
     val mode: ChatMode = ChatMode.NORMAL
 )
 
+private data class RealtimeCommand(
+    val mode: String,
+    val query: String
+)
+
 private data class MemoryCommand(
     val endpoint: String,
     val action: String,
@@ -107,12 +112,18 @@ class ChatViewModel(
         localStorage.saveChatMode(mode.name)
     }
 
-    private fun realtimeQuery(textInput: String): String? {
+    private fun realtimeQuery(textInput: String): RealtimeCommand? {
         val text = textInput.trim()
         if (text.isEmpty()) return null
         val parts = text.split(Regex("\\s+"), limit = 2)
         val first = parts.firstOrNull()?.lowercase() ?: return null
-        return if (first == "#berita" || first == "#cari" || first == "#browser") parts.getOrNull(1)?.trim() ?: "" else null
+        val mode = when (first) {
+            "#berita" -> "berita"
+            "#browser" -> "browser"
+            "#cari" -> "cari"
+            else -> return null
+        }
+        return RealtimeCommand(mode = mode, query = parts.getOrNull(1)?.trim() ?: "")
     }
 
     private fun cryptoQuery(textInput: String): String? {
@@ -235,7 +246,7 @@ class ChatViewModel(
     }
 
     private fun formatUsd(value: Double): String {
-        return if (value.isNaN() || value <= 0.0) "-" else "\$" + java.lang.String.format(java.util.Locale.US, "%,.2f", value)
+        return if (value.isNaN() || value <= 0.0) "-" else "${'$'}" + java.lang.String.format(java.util.Locale.US, "%,.2f", value)
     }
 
     private fun formatIdr(value: Double): String {
@@ -255,7 +266,7 @@ class ChatViewModel(
                 ?: return "Search realtime berjalan, tetapi hasil belum bisa dibaca."
             if (arr.length() == 0) return "Belum ada hasil realtime yang relevan untuk: $query"
             val out = StringBuilder("Hasil pencarian realtime untuk: $query\n\n")
-            for (i in 0 until minOf(5, arr.length())) {
+            for (i in 0 until minOf(20, arr.length())) {
                 val item = arr.optJSONObject(i) ?: continue
                 val title = item.optString("title", "Tanpa judul")
                 val desc = item.optString("description", item.optString("snippet", ""))
@@ -371,17 +382,18 @@ class ChatViewModel(
         }
     }
 
-    private fun searchViaVercel(query: String): Result<String> {
+    private fun searchViaVercel(command: RealtimeCommand): Result<String> {
         return try {
-            val encoded = java.net.URLEncoder.encode(query, "UTF-8")
+            val encoded = java.net.URLEncoder.encode(command.query, "UTF-8")
+            val mode = java.net.URLEncoder.encode(command.mode, "UTF-8")
             val request = Request.Builder()
-                .url("https://chat-ai-lutfula.vercel.app/api/search?q=$encoded")
+                .url("https://chat-ai-lutfula.vercel.app/api/search?q=$encoded&mode=$mode")
                 .get()
                 .build()
             val response = okHttpClient.newCall(request).execute()
             val bodyText = response.body?.string().orEmpty()
             if (response.isSuccessful && bodyText.isNotBlank()) {
-                Result.success(formatRealtime(bodyText, query))
+                Result.success(formatRealtime(bodyText, command.query))
             } else {
                 Result.failure(Exception("HTTP ${response.code}: ${bodyText.take(250)}"))
             }
@@ -470,15 +482,15 @@ class ChatViewModel(
 
                 chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "user", content = text, imageUri = imageUri))
 
-                val query = realtimeQuery(text)
-                if (query != null) {
-                    if (query.isBlank()) {
+                val realtime = realtimeQuery(text)
+                if (realtime != null) {
+                    if (realtime.query.isBlank()) {
                         chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = "Masukkan kata kunci setelah #berita, #browser, atau #cari."))
                         _uiState.update { it.copy(isLoading = false, loadingText = null) }
                         return@launch
                     }
-                    _uiState.update { it.copy(loadingText = "Mencari data realtime...") }
-                    val answer = searchViaVercel(query).getOrElse { e -> "Search realtime gagal dari backend Vercel.\n\n${e.message}" }
+                    _uiState.update { it.copy(loadingText = if (realtime.mode == "berita") "Mencari berita hari ini..." else "Mencari data realtime...") }
+                    val answer = searchViaVercel(realtime).getOrElse { e -> "Search realtime gagal dari backend Vercel.\n\n${e.message}" }
                     chatRepository.insertMessage(MessageEntity(sessionId = sessionId, role = "assistant", content = answer))
                     _uiState.update { it.copy(isLoading = false, loadingText = null) }
                     return@launch
