@@ -63,6 +63,7 @@ export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
   const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+  const mode = typeof req.query.mode === 'string' ? req.query.mode.trim().toLowerCase() : 'cari';
   const targetRoot = rootUrl(req.query.url);
   if (!q && !targetRoot) return res.status(400).json({ error: 'Missing query parameter q or url' });
 
@@ -88,15 +89,20 @@ export default async function handler(req, res) {
       }
     }
 
+    const isBeritaMode = mode === 'berita' || mode === 'news';
+    const searchLimit = isBeritaMode ? 20 : 5;
     const url = 'https://' + ['api', 'firecrawl', 'dev'].join('.') + '/v1/search';
     const h = {};
     h['Content-Type'] = 'application/json';
     h[['Authori', 'zation'].join('')] = ['Bearer', token].join(' ');
 
+    const searchBody = { query: targetRoot || q, limit: searchLimit };
+    if (isBeritaMode) searchBody.tbs = 'sbd:1,qdr:d';
+
     const r = await fetch(url, {
       method: 'POST',
       headers: h,
-      body: JSON.stringify({ query: targetRoot || q, limit: 5 })
+      body: JSON.stringify(searchBody)
     });
 
     const t = await r.text();
@@ -132,7 +138,7 @@ export default async function handler(req, res) {
       });
     }
 
-    return res.status(200).json({ query: targetRoot || q, data });
+    return res.status(200).json({ query: targetRoot || q, mode, limit: searchLimit, todayOnly: isBeritaMode, data });
   } catch (e) {
     return res.status(500).json({ error: 'Realtime search failed', message: e instanceof Error ? e.message : String(e) });
   }
