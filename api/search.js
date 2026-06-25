@@ -18,6 +18,16 @@ function shortText(input, max = 420) {
   return text.slice(0, max).replace(/\s+\S*$/, '') + '...';
 }
 
+function rootUrl(input) {
+  try {
+    const u = new URL(String(input || '').trim());
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return '';
+    return u.origin;
+  } catch (_) {
+    return '';
+  }
+}
+
 async function readPageWithBrowserless(pageUrl) {
   const tokenName = 'BROWSERLESS' + '_TOKEN';
   const token = process.env[tokenName];
@@ -41,7 +51,7 @@ async function readPageWithBrowserless(pageUrl) {
 
   if (!response.ok) return '';
   const html = await response.text();
-  return shortText(html, 420);
+  return shortText(html, 900);
 }
 
 export default async function handler(req, res) {
@@ -53,13 +63,31 @@ export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
   const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
-  if (!q) return res.status(400).json({ error: 'Missing query parameter q' });
+  const targetRoot = rootUrl(req.query.url);
+  if (!q && !targetRoot) return res.status(400).json({ error: 'Missing query parameter q or url' });
 
   const envName = 'FIRECRAWL' + '_API_KEY';
   const token = process.env[envName];
   if (!token) return res.status(500).json({ error: envName + ' not set' });
 
   try {
+    if (targetRoot) {
+      const pageText = await readPageWithBrowserless(targetRoot);
+      if (pageText) {
+        return res.status(200).json({
+          query: q || targetRoot,
+          mode: 'website',
+          url: targetRoot,
+          data: [{
+            title: targetRoot,
+            description: pageText,
+            url: targetRoot,
+            reader: 'browserless'
+          }]
+        });
+      }
+    }
+
     const url = 'https://' + ['api', 'firecrawl', 'dev'].join('.') + '/v1/search';
     const h = {};
     h['Content-Type'] = 'application/json';
@@ -68,7 +96,7 @@ export default async function handler(req, res) {
     const r = await fetch(url, {
       method: 'POST',
       headers: h,
-      body: JSON.stringify({ query: q, limit: 5 })
+      body: JSON.stringify({ query: targetRoot || q, limit: 5 })
     });
 
     const t = await r.text();
@@ -104,7 +132,7 @@ export default async function handler(req, res) {
       });
     }
 
-    return res.status(200).json({ query: q, data });
+    return res.status(200).json({ query: targetRoot || q, data });
   } catch (e) {
     return res.status(500).json({ error: 'Realtime search failed', message: e instanceof Error ? e.message : String(e) });
   }
