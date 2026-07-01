@@ -630,32 +630,79 @@ fun ChatScreen(
     }
 }
 
+enum class BlockType {
+    TEXT, PROMPT_MAIN, PROMPT_ALT
+}
+
+data class MessageBlock(
+    val type: BlockType,
+    val text: String
+)
+
+fun parseMessageContent(content: String): List<MessageBlock> {
+    val blocks = mutableListOf<MessageBlock>()
+    
+    // Split by "Prompt:"
+    val parts = content.split(Regex("(?i)Prompt:"))
+    
+    if (parts.size <= 1) {
+        blocks.add(MessageBlock(BlockType.TEXT, content))
+        return blocks
+    }
+    
+    parts.forEachIndexed { index, part ->
+        if (index == 0) {
+            if (part.isNotBlank()) {
+                blocks.add(MessageBlock(BlockType.TEXT, part.trim()))
+            }
+        } else {
+            // This part started with "Prompt:"
+            // Split this part further to separate the prompt from following text
+            val subParts = part.split(Regex("(?i)\n\n(?=(Kalau mau|Jika ingin|Alternative|Versi|Untuk|Catatan|Note|Berikut))"))
+            
+            // The first subPart is the actual prompt text
+            val promptText = subParts[0].trim()
+            if (promptText.isNotBlank()) {
+                // First prompt found in the message is considered MAIN, others ALT
+                val type = if (index == 1) BlockType.PROMPT_MAIN else BlockType.PROMPT_ALT
+                blocks.add(MessageBlock(type, promptText))
+            }
+            
+            // The remaining subParts are regular text
+            for (i in 1 until subParts.size) {
+                val textRest = subParts[i].trim()
+                if (textRest.isNotBlank()) {
+                    blocks.add(MessageBlock(BlockType.TEXT, textRest))
+                }
+            }
+        }
+    }
+    
+    return blocks
+}
+
 @Composable
-fun PromptBox(promptText: String) {
+fun MainPromptCard(promptText: String) {
     val clipboardManager = LocalClipboardManager.current
     var buttonText by remember { mutableStateOf("Copy") }
     val scope = rememberCoroutineScope()
-    
-    // Split the prompt at common conversational filler to extract only the prompt.
-    // The user's example shows: "\n\nKalau mau..."
-    val actualPrompt = promptText.split(Regex("(?i)\n\n(Kalau mau|Jika ingin|Alternative|Versi lain|Untuk)"))[0].trim()
     
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp)
             .background(Color(0xFF2C2C2C), RoundedCornerShape(8.dp))
-            .border(1.dp, Color.Gray, RoundedCornerShape(8.dp))
+            .border(1.dp, PrimaryNeon, RoundedCornerShape(8.dp))
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text(
-                text = "Prompt",
-                color = Color.Gray,
+                text = "Prompt Utama",
+                color = PrimaryNeon,
                 style = MaterialTheme.typography.labelSmall,
                 modifier = Modifier.padding(bottom = 4.dp)
             )
             Text(
-                text = actualPrompt,
+                text = promptText,
                 color = Color.White,
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(bottom = 8.dp)
@@ -668,7 +715,7 @@ fun PromptBox(promptText: String) {
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
                         .clickable {
-                            clipboardManager.setText(AnnotatedString(actualPrompt))
+                            clipboardManager.setText(AnnotatedString(promptText))
                             buttonText = "Copied"
                             scope.launch {
                                 kotlinx.coroutines.delay(2000)
@@ -678,6 +725,31 @@ fun PromptBox(promptText: String) {
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 )
             }
+        }
+    }
+}
+
+@Composable
+fun AltPromptCard(promptText: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+            .background(Color(0xFF1E1E1E), RoundedCornerShape(8.dp))
+            .border(1.dp, Color.DarkGray, RoundedCornerShape(8.dp))
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                text = "Alternatif / Opsi Tambahan",
+                color = Color.LightGray,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+            Text(
+                text = promptText,
+                color = Color.LightGray,
+                style = MaterialTheme.typography.bodySmall
+            )
         }
     }
 }
@@ -744,15 +816,19 @@ fun MessageBubble(message: UiMessage) {
                 )
             }
             
-            // Parsing logic: simple splitting on "Prompt:"
-            val parts = message.content.split("Prompt:")
-            parts.forEachIndexed { index, part ->
-                if (index == 0) {
-                    if (part.isNotBlank()) {
-                        MessageContent(content = part, isUser = isUser)
+            // Parsing logic using parseMessageContent
+            val blocks = parseMessageContent(message.content)
+            blocks.forEach { block ->
+                when (block.type) {
+                    BlockType.TEXT -> {
+                        MessageContent(content = block.text, isUser = isUser)
                     }
-                } else {
-                    PromptBox(promptText = part.trim())
+                    BlockType.PROMPT_MAIN -> {
+                        MainPromptCard(promptText = block.text)
+                    }
+                    BlockType.PROMPT_ALT -> {
+                        AltPromptCard(promptText = block.text)
+                    }
                 }
             }
 
