@@ -636,6 +636,10 @@ fun PromptBox(promptText: String) {
     var buttonText by remember { mutableStateOf("Copy") }
     val scope = rememberCoroutineScope()
     
+    // Split the prompt at common conversational filler to extract only the prompt.
+    // The user's example shows: "\n\nKalau mau..."
+    val actualPrompt = promptText.split(Regex("(?i)\n\n(Kalau mau|Jika ingin|Alternative|Versi lain|Untuk)"))[0].trim()
+    
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -651,7 +655,7 @@ fun PromptBox(promptText: String) {
                 modifier = Modifier.padding(bottom = 4.dp)
             )
             Text(
-                text = promptText,
+                text = actualPrompt,
                 color = Color.White,
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(bottom = 8.dp)
@@ -664,7 +668,7 @@ fun PromptBox(promptText: String) {
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
                         .clickable {
-                            clipboardManager.setText(AnnotatedString(promptText))
+                            clipboardManager.setText(AnnotatedString(actualPrompt))
                             buttonText = "Copied"
                             scope.launch {
                                 kotlinx.coroutines.delay(2000)
