@@ -631,6 +631,54 @@ fun ChatScreen(
 }
 
 @Composable
+fun PromptBox(promptText: String) {
+    val clipboardManager = LocalClipboardManager.current
+    var buttonText by remember { mutableStateOf("Copy") }
+    val scope = rememberCoroutineScope()
+    
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+            .background(Color(0xFF2C2C2C), RoundedCornerShape(8.dp))
+            .border(1.dp, Color.Gray, RoundedCornerShape(8.dp))
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                text = "Prompt",
+                color = Color.Gray,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+            Text(
+                text = promptText,
+                color = Color.White,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                Text(
+                    text = buttonText,
+                    color = PrimaryNeon,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable {
+                            clipboardManager.setText(AnnotatedString(promptText))
+                            buttonText = "Copied"
+                            scope.launch {
+                                kotlinx.coroutines.delay(2000)
+                                buttonText = "Copy"
+                            }
+                        }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun MessageBubble(message: UiMessage) {
     val isUser = message.role == "user"
     val alignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart
@@ -668,7 +716,6 @@ fun MessageBubble(message: UiMessage) {
                             .background(PrimaryNeon, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
-                        // Inner dot
                         Box(modifier = Modifier.size(6.dp).background(Color.White, CircleShape))
                     }
                     Spacer(modifier = Modifier.width(8.dp))
@@ -692,10 +739,20 @@ fun MessageBubble(message: UiMessage) {
                     contentScale = ContentScale.Crop
                 )
             }
-            if (message.content.isNotBlank()) {
-                MessageContent(content = message.content, isUser = isUser)
+            
+            // Parsing logic: simple splitting on "Prompt:"
+            val parts = message.content.split("Prompt:")
+            parts.forEachIndexed { index, part ->
+                if (index == 0) {
+                    if (part.isNotBlank()) {
+                        MessageContent(content = part, isUser = isUser)
+                    }
+                } else {
+                    PromptBox(promptText = part.trim())
+                }
             }
-            if (!isUser) {
+
+            if (!isUser && !message.content.contains("Prompt:")) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     val clipboardManager = LocalClipboardManager.current
@@ -723,6 +780,7 @@ fun MessageBubble(message: UiMessage) {
         }
     }
 }
+
 
 @Composable
 fun MessageContent(content: String, isUser: Boolean) {
